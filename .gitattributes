@@ -1,0 +1,20 @@
+# Normalize line endings to LF for all text files.
+* text=auto eol=lf
+
+# Explicitly declare source and header files.
+*.c     text eol=lf
+*.cpp   text eol=lf
+*.h     text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+
+# Binary files — no line ending conversion.
+*.png   binary
+*.jpg   binary
+*.gif   binary
+*.ico   binary
+*.bin   binary
+*.elf   binary
+*.hex   binary
