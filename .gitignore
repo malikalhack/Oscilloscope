@@ -10,6 +10,14 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+# Python cache
+__pycache__/
+
+# Output directories
+[Oo]utput
+[Dd]ebug
+[Rr]elease
+
 # Additional ignored files
 OldQtCode/
 WorkingDocs
