@@ -1,0 +1,92 @@
+name: Version bump after merge to development
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - development
+
+jobs:
+  version-bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: development
+
+      - name: Check skip marker
+        id: skip
+        shell: bash
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          body="${{ github.event.pull_request.body }}"
+          last_commit="$(git log -1 --pretty=%B)"
+          merged_message="$title\n$body\n$last_commit"
+
+          if echo "$merged_message" | grep -qi '\[skip ci\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "[skip ci] found; workflow will stop."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Exit if skip marker present
+        if: steps.skip.outputs.skip == 'true'
+        shell: bash
+        run: echo "Skipping version bump because [skip ci] was found."
+
+      - name: Compute next version
+        if: steps.skip.outputs.skip != 'true'
+        id: version
+        shell: python
+        run: |
+          import os
+          import re
+          from pathlib import Path
+
+            version_file = Path('app/main.cpp')
+          text = version_file.read_text(encoding='utf-8')
+
+            major = re.search(r'^#define\s+VERSION_MAJOR\s+(\d+)', text, re.M)
+            minor = re.search(r'^#define\s+VERSION_MINOR\s+(\d+)', text, re.M)
+            patch = re.search(r'^#define\s+VERSION_PATCH\s+(\d+)', text, re.M)
+
+            if not (major and minor and patch):
+              raise SystemExit('Unable to determine version from app/main.cpp')
+            next_version = f"{major.group(1)}.{minor.group(1)}.{int(patch.group(1)) + 1}"
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'version={next_version}\n')
+
+          print(f'Computed next version: {next_version}')
+
+      - name: Run release script
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python make_release.py "$VERSION" --skip-readme --skip-build
+
+      - name: Commit version bump to development
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add CMakeLists.txt app/main.cpp
+          if git diff --cached --quiet; then
+            echo "No version changes detected. Nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "Bump application version to ${VERSION} [skip ci]"
+          git push origin HEAD:development

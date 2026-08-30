@@ -1,0 +1,89 @@
+name: PR commit summary
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  update-pr-body:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Collect commit list
+        id: commits
+        shell: bash
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          git fetch --no-tags --prune origin "${{ github.event.pull_request.base.ref }}"
+
+          commits="$(git log --pretty=format:'- %s' "${BASE_SHA}..${HEAD_SHA}")"
+
+          if [ -z "$commits" ]; then
+            commits="- No commits found for this pull request."
+          fi
+
+          printf '%s\n' "$commits" > /tmp/pr_commits.txt
+
+      - name: Update PR body preserving checklist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          pr_number = os.environ['PR_NUMBER']
+          repo = os.environ['REPO']
+
+          body = subprocess.check_output(
+              ['gh', 'api', f'repos/{repo}/pulls/{pr_number}', '--jq', '.body // ""'],
+              text=True,
+          ) or ''
+
+          start_marker = '<!-- AUTO-COMMIT-SUMMARY:START -->'
+          end_marker = '<!-- AUTO-COMMIT-SUMMARY:END -->'
+
+          commit_lines = Path('/tmp/pr_commits.txt').read_text(encoding='utf-8').strip()
+          summary_content = f"{commit_lines}"
+
+          marker_pattern = re.compile(
+              rf'{re.escape(start_marker)}.*?{re.escape(end_marker)}',
+              flags=re.S,
+          )
+
+          replacement = f"{start_marker}\n{summary_content}\n{end_marker}"
+
+          if marker_pattern.search(body):
+              # Markers already present (e.g. from the PR template): fill in place.
+              updated = marker_pattern.sub(lambda _match: replacement, body)
+          else:
+              # No markers found: fall back to appending the block at the end.
+              cleaned = body.rstrip()
+              updated = cleaned + '\n\n' + replacement + '\n' if cleaned else replacement + '\n'
+
+          subprocess.run(
+              [
+                  'gh', 'api',
+                  f'repos/{repo}/pulls/{pr_number}',
+                  '--method', 'PATCH',
+                  '--field', f'body={updated}',
+              ],
+              check=True,
+          )
+
+          print('PR description updated with commit summary.')
