@@ -11,20 +11,20 @@ is developed independently and has no Qt dependency.
 
 ## Status
 
-Current version: `0.1.0`.
+Current version: `0.2.0`.
 
-The first iteration provides a minimal application skeleton:
+The current iteration provides the first UI shell:
 
 - CMake build configuration for C++14;
 - `Debug` and `Release` build targets;
 - a Makefile and Bash build script for Linux;
-- the `run` executable;
-- synchronized version fields in `CMakeLists.txt` and `app/main.cpp`;
-- a console smoke test that prints `Hello world!`.
+- an SDL2 window with an OpenGL 3 context;
+- Dear ImGui integration, a menu, control panel, status line, and display grid;
+- a pinned Dear ImGui source dependency (`v1.90.9`) fetched by CMake.
 
-SDL2, Dear ImGui, OpenGL, and libusb are not connected at this stage. The
-oscilloscope window, USB acquisition, and demo mode are planned for later
-iterations.
+The shell provides presentation-only controls for acquisition state, demo mode,
+timebase, and the two channel scales. USB acquisition and waveform processing
+are planned for later iterations.
 
 ## Planned Stack
 
@@ -38,33 +38,40 @@ iterations.
 ## Directory Layout
 
 ```text
-app/         Application entry point.
-capture/     Sample acquisition and processing.
-core/        Shared types and application logic.
-render/      Oscilloscope waveform rendering.
-ui/          User interface.
-usb/         USB device communication.
-OldQtCode/   Historical Qt4/KDE4 source for reference only.
-WorkingDocs/ Technical specification and device documentation.
+Oscilloscope/
+├── app/            Application entry point.
+├── capture/        Sample acquisition and processing.
+├── core/           Shared types and application logic.
+├── docs/           Project documentation.
+├── render/         Oscilloscope waveform rendering.
+├── ui/             User interface.
+├── usb/            USB device communication.
+├── WorkingDocs/    Technical specification and device documentation.
+├── OldQtCode/      Historical Qt4/KDE4 reference implementation.
+├── CMakeLists.txt  CMake build configuration.
+├── Makefile        Make build entry points.
+└── linux_build.sh  Linux build script.
 ```
 
-## First-Iteration Requirements
+## Requirements
 
-The current application skeleton requires:
+The current application requires:
 
 - CMake 3.16 or newer;
 - a compiler with C++14 support, such as GCC or Clang;
 - GNU Make for builds through `make`.
+- SDL2 development files;
+- OpenGL development files.
 
 On Debian, Ubuntu, and Linux Mint:
 
 ```bash
-sudo apt update
-sudo apt install build-essential cmake make
+sudo apt-get update
+sudo apt-get install build-essential cmake make pkg-config libsdl2-dev libgl1-mesa-dev
 ```
 
-SDL2, OpenGL, and libusb will be required once the graphical interface and USB
-layer are implemented.
+Dear ImGui is downloaded automatically by CMake during configuration. libusb
+will be required when the USB layer is implemented.
 
 ## Build
 
@@ -148,11 +155,11 @@ metadata and restores the previous files if the build fails.
 
 ## Next Steps
 
-1. Create an SDL2 window and integrate Dear ImGui.
-2. Add an oscilloscope grid and a demo waveform.
-3. Implement a two-channel model, timebase, and basic controls.
-4. Add libusb support and a safe acquisition thread.
-5. Handle device disconnection and fallback to demo mode.
+1. Add a demo waveform to the display grid.
+2. Implement a two-channel model, timebase, and basic controls.
+3. Add libusb support and a safe acquisition thread.
+4. Handle device disconnection and fallback to demo mode.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.
+
