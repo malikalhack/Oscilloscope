@@ -1,8 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Oscilloscope VERSION 0.1.0 LANGUAGES CXX C)
+project(Oscilloscope VERSION 0.2.0 LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(FetchContent)
+
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.90.9
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(imgui)
+
+find_package(OpenGL REQUIRED)
+find_package(SDL2 REQUIRED)
 
 set(APP_NAME run)
 
@@ -15,6 +30,12 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 set(SOURCES_LIST
     app/main.cpp
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
 )
 
 set(HEADERS_LIST
@@ -34,4 +55,11 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 endif()
 
 add_executable(${APP_NAME} ${SOURCES_LIST})
+
+target_include_directories(${APP_NAME} PRIVATE
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+
+target_link_libraries(${APP_NAME} PRIVATE SDL2::SDL2 OpenGL::GL)
 
