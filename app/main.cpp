@@ -234,11 +234,6 @@ int main (void) {
         ) {
             acquisitionRunning = !acquisitionRunning;
         }
-        bool newDemoMode = demoMode;
-
-        if (ImGui::Checkbox("Demo mode", &newDemoMode)) {
-            updateDemoMode(&demoMode, &usbScanResult, &deviceStatus);
-        }
         if (ImGui::Button("Rescan devices", ImVec2(-1.0f, 32.0f))) {
             usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
             deviceStatus = formatUsbScanStatus(usbScanResult);
@@ -258,6 +253,12 @@ int main (void) {
                 IM_ARRAYSIZE(voltageScales)
             );
             ImGui::PopID();
+        }
+        ImGui::Separator();
+        bool newDemoMode = demoMode;
+
+        if (ImGui::Checkbox("Demo mode", &newDemoMode)) {
+            updateDemoMode(&demoMode, &usbScanResult, &deviceStatus);
         }
         ImGui::EndChild();
 
