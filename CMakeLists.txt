@@ -60,6 +60,7 @@ endif()
 add_executable(${APP_NAME} ${SOURCES_LIST})
 
 target_include_directories(${APP_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )

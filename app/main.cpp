@@ -50,6 +50,7 @@
 
 /******************************* Included files ******************************/
 #include <stdio.h>
+#include <string>
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -57,6 +58,11 @@
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
+
+#include "usb/usb_device.h"
+
+using oscilloscope::usb::EScanStatus;
+using oscilloscope::usb::SUsbScanResult;
 
 /***************************** Private variables *****************************/
 
@@ -80,6 +86,12 @@ static void drawOscilloscopeGrid(
     ImDrawList *drawList,
     const ImVec2 &position,
     const ImVec2 &size
+);
+static std::string formatUsbScanStatus(const SUsbScanResult &scanResult);
+static void updateDemoMode(
+    bool *demoMode,
+    SUsbScanResult *usbScanResult,
+    std::string *deviceStatus
 );
 
 /********************* Application Programming Interface *********************/
@@ -135,6 +147,9 @@ int main (void) {
     bool channelEnabled[] = {true, true};
     int timebase = 6;
     int voltsPerDivision[] = {2, 2};
+    SUsbScanResult usbScanResult =
+        oscilloscope::usb::enumerateSupportedDevices();
+    std::string deviceStatus = formatUsbScanStatus(usbScanResult);
     const char* timebases[] = {
         "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
         "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
@@ -165,7 +180,15 @@ int main (void) {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
-                ImGui::MenuItem("Demo mode", NULL, &demoMode);
+                bool newDemoMode = demoMode;
+
+                if (ImGui::MenuItem("Demo mode", NULL, &newDemoMode)) {
+                    updateDemoMode(
+                        &demoMode,
+                        &usbScanResult,
+                        &deviceStatus
+                    );
+                }
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -211,7 +234,15 @@ int main (void) {
         ) {
             acquisitionRunning = !acquisitionRunning;
         }
-        ImGui::Checkbox("Demo mode", &demoMode);
+        bool newDemoMode = demoMode;
+
+        if (ImGui::Checkbox("Demo mode", &newDemoMode)) {
+            updateDemoMode(&demoMode, &usbScanResult, &deviceStatus);
+        }
+        if (ImGui::Button("Rescan devices", ImVec2(-1.0f, 32.0f))) {
+            usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
+            deviceStatus = formatUsbScanStatus(usbScanResult);
+        }
         ImGui::Separator();
         ImGui::TextUnformatted("Horizontal");
         ImGui::Combo("Timebase", &timebase, timebases, IM_ARRAYSIZE(timebases));
@@ -232,9 +263,10 @@ int main (void) {
 
         ImGui::SetCursorScreenPos(statusPosition);
         ImGui::Text(
-            "%s | %s | CH1 %s | CH2 %s",
+            "%s | %s | %s | CH1 %s | CH2 %s",
             acquisitionRunning ? "Acquiring" : "Stopped",
-            demoMode ? "Demo" : "No device",
+            demoMode ? "Demo mode" : "Live mode",
+            deviceStatus.c_str(),
             channelEnabled[0] ? "on" : "off",
             channelEnabled[1] ? "on" : "off"
         );
@@ -260,6 +292,39 @@ int main (void) {
     return 0;
 }
 /***************************** Private functions *****************************/
+
+static std::string formatUsbScanStatus(const SUsbScanResult &scanResult) {
+    std::string status;
+
+    if (scanResult.status == EScanStatus::eSuccess) {
+        if (scanResult.devices.empty()) {
+            status = "No supported device";
+        }
+        else {
+            status = scanResult.devices.front().modelName;
+            status += " detected";
+        }
+    }
+    else {
+        status = "USB error: ";
+        status += scanResult.errorMessage;
+    }
+
+    return status;
+}
+
+static void updateDemoMode(
+    bool *demoMode,
+    SUsbScanResult *usbScanResult,
+    std::string *deviceStatus
+) {
+    *demoMode = !*demoMode;
+
+    if (!*demoMode) {
+        *usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
+        *deviceStatus = formatUsbScanStatus(*usbScanResult);
+    }
+}
 
 static void drawOscilloscopeGrid(ImDrawList* drawList, const ImVec2& position,
     const ImVec2& size) {
