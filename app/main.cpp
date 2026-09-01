@@ -185,6 +185,7 @@ int main (void) {
         ImGui::BeginGroup();
         ImGui::TextUnformatted("Display");
         ImVec2 displaySize = ImGui::GetContentRegionAvail();
+        ImVec2 statusPosition = ImVec2(0.0f, 0.0f);
         displaySize.x -= 268.0f;
         displaySize.y -= ImGui::GetFrameHeightWithSpacing();
         ImGui::BeginChild(
@@ -199,6 +200,7 @@ int main (void) {
             ImGui::GetContentRegionAvail()
         );
         ImGui::EndChild();
+        statusPosition = ImGui::GetCursorScreenPos();
         ImGui::EndGroup();
 
         ImGui::SameLine();
@@ -228,6 +230,7 @@ int main (void) {
         }
         ImGui::EndChild();
 
+        ImGui::SetCursorScreenPos(statusPosition);
         ImGui::Text(
             "%s | %s | CH1 %s | CH2 %s",
             acquisitionRunning ? "Acquiring" : "Stopped",
