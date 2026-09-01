@@ -32,6 +32,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 set(SOURCES_LIST
     app/main.cpp
+    usb/usb_device.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -41,7 +42,7 @@ set(SOURCES_LIST
 )
 
 set(HEADERS_LIST
-    
+    usb/usb_device.h
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
