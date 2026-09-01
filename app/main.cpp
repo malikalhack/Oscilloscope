@@ -4,7 +4,7 @@
  * @version 0.2.0
  * @authors Anton Chernov
  * @date    2026-08-28
- * @date    @showdate "%m/%d/%Y"
+ * @date    @showdate "%Y-%m-%d"
  */
 
 /********************************* Definition ********************************/

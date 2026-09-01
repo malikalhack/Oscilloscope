@@ -7,8 +7,8 @@
 <!-- AUTO-COMMIT-SUMMARY:END -->
 
 ## Author Checklist
-- [ ] added a summary description of the work done to the linked task(s);
 - [ ] added generated documentation;
+- [ ] added a description of the work completed to the history file;
 - [ ] successfully generated the documentation, and it meets expectations;
 - [ ] successfully compiled the library on Linux;
 

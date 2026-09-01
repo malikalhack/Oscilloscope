@@ -1,8 +1,10 @@
 /**
+ * @copyright @showdate "%Y " Anton Chernov. All rights reserved.
  * @file    usb_device.cpp
  * @version 0.2.0
  * @authors Anton Chernov
  * @date    2026-09-01
+ * @date    @showdate "%Y-%m-%d"
  */
 
 /******************************* Included files ******************************/
@@ -14,6 +16,7 @@
 namespace oscilloscope {
 namespace usb {
 
+/** @brief Defines a supported model signature */
 struct SSupportedDevice {
     uint16_t vendorId;
     uint16_t productId;
@@ -22,12 +25,19 @@ struct SSupportedDevice {
 
 /****************************** Module variables ******************************/
 
+/** @brief Maps supported USB VID/PID pairs to model display names */
 static const SSupportedDevice supported_devices[] = {
     {0x04B4U, 0x2250U, "Hantek DSO-2250"}
 };
 
 /***************************** Private prototypes *****************************/
 
+/**
+ * @brief Finds the supported-model entry for a USB VID/PID pair
+ * @param[in] vendorId USB vendor identifier
+ * @param[in] productId USB product identifier
+ * @returns Matching model entry, or NULL when the device is unsupported
+ */
 static const SSupportedDevice* findSupportedDevice(
     uint16_t vendorId,
     uint16_t productId
@@ -35,6 +45,7 @@ static const SSupportedDevice* findSupportedDevice(
 
 /********************* Application Programming Interface *********************/
 
+/** @fn enumerateSupportedDevices */
 SUsbScanResult enumerateSupportedDevices() {
     libusb_context* context = NULL;
     libusb_device** deviceList = NULL;
@@ -90,6 +101,7 @@ SUsbScanResult enumerateSupportedDevices() {
 
 /****************************** Private functions *****************************/
 
+/** @fn findSupportedDevice */
 static const SSupportedDevice* findSupportedDevice(
     const uint16_t vendorId,
     const uint16_t productId
