@@ -140,7 +140,7 @@ By default, `linux_build.sh` uses the `Output` directory. Its executable is:
 Versions use the `MAJOR.MINOR.PATCH` format and are updated with:
 
 ```bash
-python3 make_release.py 0.1.1 --skip-build
+python3 make_release.py 0.1.1
 ```
 
 The script synchronizes:
@@ -148,10 +148,14 @@ The script synchronizes:
 - the CMake project version in `CMakeLists.txt`;
 - the `@version` field in `app/main.cpp`;
 - the `VERSION_MAJOR`, `VERSION_MINOR`, and `VERSION_PATCH` macros;
-- the embedded `FileVersion` and `ProductVersion` strings.
+- the embedded `FileVersion` and `ProductVersion` strings;
+- the version shown in `README.md`, `docs/mainpage.md`, and `docs/Doxyfile`.
 
-Without `--skip-build`, the script builds the project after updating the
-metadata and restores the previous files if the build fails.
+Without `--skip-build`, the script builds the project after updating metadata
+and restores the previous files if the build fails.
+
+CI can update only the version metadata by passing `--skip-build`.
+
 
 ## Next Steps
 
