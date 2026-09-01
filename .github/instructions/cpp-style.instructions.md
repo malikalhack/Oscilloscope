@@ -62,6 +62,20 @@ Use the `//!` style on `#endif` (not `/* NAME */`):
 System / standard library headers first (angle-bracket form), then project
 headers (quote form). Blank line between unrelated clusters.
 
+Prefer `<stdint.h>` over `<cstdint>`. Use fixed-width integer types such as
+`uint16_t` and `uint8_t` without the `std::` prefix.
+
+Do not use `using namespace std;` at global scope. Keep standard-library types
+that are not fixed-width integer types explicitly qualified, for example
+`std::string` and `std::vector`.
+
+## Module structure
+
+A module containing one implementation file and one matching header may keep
+both files in its module directory. When a module has, or is expected to gain,
+multiple implementation or header files, place headers in `inc/` and source
+files in `src/` below that module directory.
+
 ## Macro documentation
 
 Every public or non-obvious `#define` gets a Doxygen block; align related values:
