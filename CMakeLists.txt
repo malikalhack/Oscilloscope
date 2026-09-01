@@ -18,6 +18,8 @@ FetchContent_MakeAvailable(imgui)
 
 find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
 
 set(APP_NAME run)
 
@@ -61,5 +63,9 @@ target_include_directories(${APP_NAME} PRIVATE
     ${imgui_SOURCE_DIR}/backends
 )
 
-target_link_libraries(${APP_NAME} PRIVATE SDL2::SDL2 OpenGL::GL)
+target_link_libraries(${APP_NAME} PRIVATE
+    SDL2::SDL2
+    OpenGL::GL
+    PkgConfig::LIBUSB
+)
 
