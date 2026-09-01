@@ -67,7 +67,22 @@ Records key decisions, structural changes, and completed development stages.
 - Updated `.gitignore` with minor repository housekeeping changes.
 - Verified the Release build after the UI layout changes.
 
-### Next milestone
+### Stage 3 - USB detection and connection
 
-- Stage 3 - USB Layer: add libusb, implement Hantek device detection,
-  connection lifecycle, endpoint reads, buffering, and safe error states.
+- Added `libusb-1.0` as a required CMake dependency.
+- Implemented supported-device enumeration through libusb.
+- Added the Hantek DSO-2250 device signature: VID `0x04B4`, PID `0x2250`.
+- Scan every connected USB device and retain all supported-device matches with
+  their bus number, address, VID/PID, and model name.
+- Added a `Rescan devices` control and status-line reporting for detected
+  devices and libusb errors.
+- Rescan automatically when switching from Demo mode to Live mode.
+- Verified detection with a connected Hantek DSO-2250 and a successful Release
+  build.
+
+### Next USB tasks
+
+- Connect to the selected device and claim its USB interface.
+- Read endpoint data chunks in a dedicated acquisition path.
+- Add buffering between USB reads and waveform processing.
+- Handle timeouts, I/O errors, disconnects, and recovery states.

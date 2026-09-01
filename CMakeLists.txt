@@ -18,6 +18,8 @@ FetchContent_MakeAvailable(imgui)
 
 find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
 
 set(APP_NAME run)
 
@@ -30,6 +32,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 set(SOURCES_LIST
     app/main.cpp
+    usb/usb_device.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -39,7 +42,7 @@ set(SOURCES_LIST
 )
 
 set(HEADERS_LIST
-    
+    usb/usb_device.h
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -57,9 +60,14 @@ endif()
 add_executable(${APP_NAME} ${SOURCES_LIST})
 
 target_include_directories(${APP_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )
 
-target_link_libraries(${APP_NAME} PRIVATE SDL2::SDL2 OpenGL::GL)
+target_link_libraries(${APP_NAME} PRIVATE
+    SDL2::SDL2
+    OpenGL::GL
+    PkgConfig::LIBUSB
+)
 

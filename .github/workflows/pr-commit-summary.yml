@@ -40,6 +40,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         shell: python
         run: |
           import os
@@ -49,17 +51,36 @@ jobs:
 
           pr_number = os.environ['PR_NUMBER']
           repo = os.environ['REPO']
+          pr_title = os.environ['PR_TITLE']
+          head_ref = os.environ['HEAD_REF']
 
           body = subprocess.check_output(
               ['gh', 'api', f'repos/{repo}/pulls/{pr_number}', '--jq', '.body // ""'],
               text=True,
           ) or ''
 
+          linked_task_start = '<!-- AUTO-LINKED-TASK:START -->'
+          linked_task_end = '<!-- AUTO-LINKED-TASK:END -->'
           start_marker = '<!-- AUTO-COMMIT-SUMMARY:START -->'
           end_marker = '<!-- AUTO-COMMIT-SUMMARY:END -->'
 
           commit_lines = Path('/tmp/pr_commits.txt').read_text(encoding='utf-8').strip()
           summary_content = f"{commit_lines}"
+
+          task_match = re.search(
+              r'(?im)^\s*(?:closes|fixes|resolves)\s+#(\d+)\b',
+              body,
+          )
+          if task_match is None:
+              task_match = re.search(r'(?<!\w)#(\d+)\b', pr_title)
+          if task_match is None:
+              task_match = re.match(r'(\d+)(?:[-_/]|$)', head_ref)
+          if task_match is None:
+              task_match = re.search(r'(?<!\w)#(\d+)\b', commit_lines)
+
+          linked_task_content = ''
+          if task_match is not None:
+              linked_task_content = f'Closes #{task_match.group(1)}'
 
           marker_pattern = re.compile(
               rf'{re.escape(start_marker)}.*?{re.escape(end_marker)}',
@@ -75,6 +96,20 @@ jobs:
               # No markers found: fall back to appending the block at the end.
               cleaned = body.rstrip()
               updated = cleaned + '\n\n' + replacement + '\n' if cleaned else replacement + '\n'
+
+          linked_task_pattern = re.compile(
+              rf'{re.escape(linked_task_start)}.*?{re.escape(linked_task_end)}',
+              flags=re.S,
+          )
+          linked_task_replacement = (
+              f'{linked_task_start}\n{linked_task_content}\n{linked_task_end}'
+          )
+
+          if linked_task_pattern.search(updated):
+              updated = linked_task_pattern.sub(
+                lambda _match: linked_task_replacement,
+                updated,
+              )
 
           subprocess.run(
               [

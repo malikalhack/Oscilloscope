@@ -47,6 +47,8 @@ class Updater:
     CMAKE_FILE = "CMakeLists.txt"
     MAIN_CPP_FILE = "app" + SEPARATOR + "main.cpp"
     README_FILE = "README.md"
+    MAINPAGE_FILE = "docs" + SEPARATOR + "mainpage.md"
+    DOXYFILE = "docs" + SEPARATOR + "Doxyfile"
 
     def __init__(self, args: tuple = ()) -> None:
         self.check_passed = False
@@ -92,9 +94,15 @@ class Updater:
             print("{} is not available".format(self.CMAKE_FILE))
             return False
 
-        if not isfile(self.MAIN_CPP_FILE):
-            print("{} is not available".format(self.MAIN_CPP_FILE))
-            return False
+        required_files = (
+            self.MAIN_CPP_FILE,
+            self.MAINPAGE_FILE,
+            self.DOXYFILE,
+        )
+        for file in required_files:
+            if not isfile(file):
+                print("{} is not available".format(file))
+                return False
 
         self.check_passed = True
         return True
@@ -104,7 +112,12 @@ class Updater:
 
     # Step 2: collect the files that need version metadata updates.
     def findLibFiles(self) -> tuple:
-        flist = [self.CMAKE_FILE, self.MAIN_CPP_FILE]
+        flist = [
+            self.CMAKE_FILE,
+            self.MAIN_CPP_FILE,
+            self.MAINPAGE_FILE,
+            self.DOXYFILE,
+        ]
         if not self.skip_readme and isfile(self.README_FILE):
             flist.append(self.README_FILE)
         return tuple(flist)
@@ -167,8 +180,10 @@ class Updater:
             r'(?m)^(\s+"LegalCopyright:\sCopyright \(C\)\s)[^\n]*(\\n")'
         )
         MD_LIB_VER = (
-            r"version\s+of\s+the\s+application\s+is\s+\d+\.\d+\.\d+"
+            r"(Current\s+version:\s+`)\d+\.\d+\.\d+"
         )
+        MAINPAGE_VER = r"(\*\*Version:\*\*\s+)\d+\.\d+\.\d+"
+        DOXYFILE_VER = r"(?m)^(PROJECT_NUMBER\s+=\s+)\d+\.\d+\.\d+"
 
         VER = self.lib_ver.split('.')
         for file in ftuple:
@@ -220,8 +235,21 @@ class Updater:
                     continue
                 content = re.sub(
                     MD_LIB_VER,
-                    "version of the application is {}.{}.{}"
-                    .format(VER[0], VER[1], VER[2]),
+                    rf"\g<1>{self.lib_ver}",
+                    content,
+                    count=1,
+                )
+            elif file == self.MAINPAGE_FILE:
+                content = re.sub(
+                    MAINPAGE_VER,
+                    rf"\g<1>{self.lib_ver}",
+                    content,
+                    count=1,
+                )
+            elif file == self.DOXYFILE:
+                content = re.sub(
+                    DOXYFILE_VER,
+                    rf"\g<1>{self.lib_ver}",
                     content,
                     count=1,
                 )
