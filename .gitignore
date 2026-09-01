@@ -21,4 +21,5 @@ __pycache__/
 # Additional ignored files
 OldQtCode/
 WorkingDocs
+**/imgui.ini
 
