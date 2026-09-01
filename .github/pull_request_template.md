@@ -1,5 +1,6 @@
 ## Linked Task
-<!-- Link to issue, task, or ticket -->
+<!-- AUTO-LINKED-TASK:START -->
+<!-- AUTO-LINKED-TASK:END -->
 
 ## Commits
 <!-- AUTO-COMMIT-SUMMARY:START -->
