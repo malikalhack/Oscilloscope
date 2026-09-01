@@ -94,15 +94,15 @@ class Updater:
             print("{} is not available".format(self.CMAKE_FILE))
             return False
 
-        required_files = (
-            self.MAIN_CPP_FILE,
-            self.MAINPAGE_FILE,
-            self.DOXYFILE,
-        )
+        required_files = (self.MAINPAGE_FILE, self.DOXYFILE)
         for file in required_files:
             if not isfile(file):
                 print("{} is not available".format(file))
                 return False
+
+        if not self.findSourceFiles():
+            print("No project source files were found in {}".format(self.CMAKE_FILE))
+            return False
 
         self.check_passed = True
         return True
@@ -110,14 +110,36 @@ class Updater:
     def isValid(self) -> bool:
         return self.check_passed
 
+    # Read project source paths from the CMake source and header lists.
+    def findSourceFiles(self) -> tuple:
+        with File(self.CMAKE_FILE, "r") as opened_file:
+            cmake_content = opened_file.read()
+
+        source_files = []
+        for list_name in ("SOURCES_LIST", "HEADERS_LIST"):
+            match = re.search(
+                r"set\s*\(\s*{}\s*(.*?)\)".format(list_name),
+                cmake_content,
+                re.DOTALL,
+            )
+            if match is None:
+                continue
+
+            for line in match.group(1).splitlines():
+                path = line.split("#", 1)[0].strip()
+                if path and "${" not in path and isfile(path):
+                    source_files.append(path)
+
+        return tuple(source_files)
+
     # Step 2: collect the files that need version metadata updates.
     def findLibFiles(self) -> tuple:
         flist = [
             self.CMAKE_FILE,
-            self.MAIN_CPP_FILE,
             self.MAINPAGE_FILE,
             self.DOXYFILE,
         ]
+        flist.extend(self.findSourceFiles())
         if not self.skip_readme and isfile(self.README_FILE):
             flist.append(self.README_FILE)
         return tuple(flist)
@@ -184,6 +206,7 @@ class Updater:
         )
         MAINPAGE_VER = r"(\*\*Version:\*\*\s+)\d+\.\d+\.\d+"
         DOXYFILE_VER = r"(?m)^(PROJECT_NUMBER\s+=\s+)\d+\.\d+\.\d+"
+        source_files = self.findSourceFiles()
 
         VER = self.lib_ver.split('.')
         for file in ftuple:
@@ -201,35 +224,36 @@ class Updater:
                     content,
                     count=1,
                 )
-            elif file == self.MAIN_CPP_FILE:
+            elif file in source_files:
                 content = re.sub(
                     HEADER,
                     rf"\g<1>{self.lib_ver}",
                     content,
                     count=1,
                 )
-                major, minor, patch = VER
-                content = re.sub(MAJOR_VER, rf"\g<1>{major}", content, count=1)
-                content = re.sub(MINOR_VER, rf"\g<1>{minor}", content, count=1)
-                content = re.sub(PATCH_VER, rf"\g<1>{patch}", content, count=1)
-                content = re.sub(
-                    FILE_VER,
-                    rf"\g<1>{major}.{minor}.{patch}.0\g<2>",
-                    content,
-                    count=1,
-                )
-                content = re.sub(
-                    PROD_VER,
-                    rf"\g<1>{major}.{minor}.{patch}.0\g<2>",
-                    content,
-                    count=1,
-                )
-                content = re.sub(
-                    COPYRIGHT,
-                    rf"\g<1>Anton Chernov, {YEAR}\g<2>",
-                    content,
-                    count=1,
-                )
+                if file == self.MAIN_CPP_FILE:
+                    major, minor, patch = VER
+                    content = re.sub(MAJOR_VER, rf"\g<1>{major}", content, count=1)
+                    content = re.sub(MINOR_VER, rf"\g<1>{minor}", content, count=1)
+                    content = re.sub(PATCH_VER, rf"\g<1>{patch}", content, count=1)
+                    content = re.sub(
+                        FILE_VER,
+                        rf"\g<1>{major}.{minor}.{patch}.0\g<2>",
+                        content,
+                        count=1,
+                    )
+                    content = re.sub(
+                        PROD_VER,
+                        rf"\g<1>{major}.{minor}.{patch}.0\g<2>",
+                        content,
+                        count=1,
+                    )
+                    content = re.sub(
+                        COPYRIGHT,
+                        rf"\g<1>Anton Chernov, {YEAR}\g<2>",
+                        content,
+                        count=1,
+                    )
             elif file == self.README_FILE:
                 if self.skip_readme:
                     continue
