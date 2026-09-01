@@ -12,7 +12,7 @@
 - [ ] successfully compiled the library on Linux;
 
 ## Testing
-- [ ] not run
+- [ ] `./linux_build.sh -c -d`
 - [ ] `make debug`
 - [ ] manual UI check
 
