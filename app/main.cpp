@@ -182,6 +182,26 @@ int main (void) {
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus
         );
 
+        ImGui::BeginGroup();
+        ImGui::TextUnformatted("Display");
+        ImVec2 displaySize = ImGui::GetContentRegionAvail();
+        displaySize.x -= 268.0f;
+        displaySize.y -= ImGui::GetFrameHeightWithSpacing();
+        ImGui::BeginChild(
+            "Waveform",
+            displaySize,
+            true,
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+        );
+        drawOscilloscopeGrid(
+            ImGui::GetWindowDrawList(),
+            ImGui::GetCursorScreenPos(),
+            ImGui::GetContentRegionAvail()
+        );
+        ImGui::EndChild();
+        ImGui::EndGroup();
+
+        ImGui::SameLine();
         ImGui::BeginChild("Controls", ImVec2(260.0f, 0.0f), true);
         if (
             ImGui::Button(
@@ -208,23 +228,6 @@ int main (void) {
         }
         ImGui::EndChild();
 
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        ImGui::TextUnformatted("Display");
-        ImVec2 displaySize = ImGui::GetContentRegionAvail();
-        displaySize.y -= ImGui::GetFrameHeightWithSpacing();
-        ImGui::BeginChild(
-            "Waveform",
-            displaySize,
-            true,
-            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
-        );
-        drawOscilloscopeGrid(
-            ImGui::GetWindowDrawList(),
-            ImGui::GetCursorScreenPos(),
-            ImGui::GetContentRegionAvail()
-        );
-        ImGui::EndChild();
         ImGui::Text(
             "%s | %s | CH1 %s | CH2 %s",
             acquisitionRunning ? "Acquiring" : "Stopped",
@@ -232,7 +235,6 @@ int main (void) {
             channelEnabled[0] ? "on" : "off",
             channelEnabled[1] ? "on" : "off"
         );
-        ImGui::EndGroup();
         ImGui::End();
 
         ImGui::Render();
