@@ -1,7 +1,7 @@
 /**
  * @copyright @showdate "%Y " Anton Chernov. All rights reserved.
  * @file    usb_device.cpp
- * @version 0.2.0
+ * @version 0.2.1
  * @authors Anton Chernov
  * @date    2026-09-01
  * @date    @showdate "%Y-%m-%d"
