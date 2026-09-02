@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+#include <libusb-1.0/libusb.h>
+
 /********************************* Definitions ********************************/
 
 namespace oscilloscope {
@@ -39,13 +41,24 @@ enum class EScanStatus {
     eEnumerationFailed     /**< libusb device enumeration failed */
 };
 
+/** @brief Describes the outcome of a USB connection lifecycle operation */
+enum class EConnectionStatus {
+    eConnected,             /**< Device opened and interface claimed */
+    eDisconnected,          /**< Device released and closed */
+    eInitializationFailed,  /**< libusb context initialization failed */
+    eDeviceNotFound,        /**< Matching device was not found */
+    eOpenFailed,            /**< libusb_open failed */
+    eClaimInterfaceFailed,  /**< libusb_claim_interface failed */
+    eReleaseFailed          /**< libusb_release_interface failed */
+};
+
 /** @brief Identifies one supported USB oscilloscope instance */
 struct SUsbDeviceInfo {
     uint16_t vendorId;     /**< USB vendor identifier */
     uint16_t productId;    /**< USB product identifier */
     uint8_t busNumber;     /**< USB bus number */
     uint8_t deviceAddress; /**< Address assigned on the USB bus */
-    const char* modelName; /**< Supported model display name */
+    const char *modelName; /**< Supported model display name */
 };
 
 /** @brief Holds the outcome and matching devices from a USB scan */
@@ -55,6 +68,20 @@ struct SUsbScanResult {
     std::string errorMessage;            /**< libusb error for a failed scan */
 };
 
+/** @brief Describes an active USB connection to a supported device */
+struct SUsbConnection {
+    libusb_context *context;       /**< libusb connection context */
+    libusb_device_handle *handle;  /**< Open USB device handle */
+    uint8_t interfaceNumber;       /**< Claimed interface number */
+    bool isConnected;              /**< True once the interface is claimed */
+};
+
+/** @brief Holds the result of a connection lifecycle operation */
+struct SUsbConnectionResult {
+    EConnectionStatus status;   /**< Operation outcome */
+    std::string errorMessage;   /**< libusb error string when applicable */
+};
+
 /********************* Application Programming Interface *********************/
 
 /**
@@ -62,6 +89,24 @@ struct SUsbScanResult {
  * @returns Scan status, matching devices, and an error message when applicable
  */
 SUsbScanResult enumerateSupportedDevices();
+
+/**
+ * @brief Connects to a known supported USB oscilloscope
+ * @param[in] deviceInfo Device descriptor returned by a scan result
+ * @param[out] connection Connection state container that is filled in
+ * @returns Connection status and error message when applicable
+ */
+SUsbConnectionResult connectToDevice(
+    const SUsbDeviceInfo &deviceInfo,
+    SUsbConnection *connection
+);
+
+/**
+ * @brief Releases and closes a currently connected USB oscilloscope
+ * @param[in,out] connection Connection state container to reset
+ * @returns Disconnection status and error message when applicable
+ */
+SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection);
 
 } // namespace usb
 } // namespace oscilloscope
