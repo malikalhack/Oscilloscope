@@ -74,6 +74,9 @@
 #include "usb/usb_device.h"
 
 using oscilloscope::usb::EScanStatus;
+using oscilloscope::usb::SUsbConnection;
+using oscilloscope::usb::SUsbConnectionResult;
+using oscilloscope::usb::SUsbDeviceInfo;
 using oscilloscope::usb::SUsbScanResult;
 
 /***************************** Private variables *****************************/
@@ -99,10 +102,23 @@ static void drawOscilloscopeGrid(
     const ImVec2 &position,
     const ImVec2 &size
 );
-static std::string formatUsbScanStatus(const SUsbScanResult &scanResult);
+static bool isUsbDevicePresent(
+    const SUsbScanResult &scanResult,
+    const SUsbDeviceInfo &deviceInfo
+);
+static std::string formatUsbConnectionStatus(
+    const SUsbScanResult &scanResult,
+    const SUsbConnection &connection
+);
+static std::string formatUsbConnectionError(
+    const char *operation,
+    const SUsbConnectionResult &result
+);
 static void updateDemoMode(
     bool *demoMode,
     SUsbScanResult *usbScanResult,
+    SUsbConnection *connection,
+    SUsbDeviceInfo *connectedDevice,
     std::string *deviceStatus
 );
 
@@ -161,7 +177,12 @@ int main (void) {
     int voltsPerDivision[] = {2, 2};
     SUsbScanResult usbScanResult =
         oscilloscope::usb::enumerateSupportedDevices();
-    std::string deviceStatus = formatUsbScanStatus(usbScanResult);
+    SUsbConnection usbConnection = {NULL, NULL, 0U, false};
+    SUsbDeviceInfo connectedDevice = {0U, 0U, 0U, 0U, NULL};
+    std::string deviceStatus = formatUsbConnectionStatus(
+        usbScanResult,
+        usbConnection
+    );
     const char* timebases[] = {
         "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
         "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
@@ -198,6 +219,8 @@ int main (void) {
                     updateDemoMode(
                         &demoMode,
                         &usbScanResult,
+                        &usbConnection,
+                        &connectedDevice,
                         &deviceStatus
                     );
                 }
@@ -248,7 +271,85 @@ int main (void) {
         }
         if (ImGui::Button("Rescan devices", ImVec2(-1.0f, 32.0f))) {
             usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
-            deviceStatus = formatUsbScanStatus(usbScanResult);
+
+            if (
+                usbConnection.isConnected &&
+                !isUsbDevicePresent(usbScanResult, connectedDevice)
+            ) {
+                const SUsbConnectionResult disconnectResult =
+                    oscilloscope::usb::disconnectFromDevice(&usbConnection);
+
+                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                if (disconnectResult.errorMessage.empty()) {
+                    deviceStatus = formatUsbConnectionStatus(
+                        usbScanResult,
+                        usbConnection
+                    );
+                }
+                else {
+                    deviceStatus = formatUsbConnectionError(
+                        "Disconnect",
+                        disconnectResult
+                    );
+                }
+            }
+            else {
+                deviceStatus = formatUsbConnectionStatus(
+                    usbScanResult,
+                    usbConnection
+                );
+            }
+        }
+
+        if (usbConnection.isConnected) {
+            if (ImGui::Button("Disconnect", ImVec2(-1.0f, 32.0f))) {
+                const SUsbConnectionResult disconnectResult =
+                    oscilloscope::usb::disconnectFromDevice(&usbConnection);
+
+                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                if (disconnectResult.errorMessage.empty()) {
+                    deviceStatus = formatUsbConnectionStatus(
+                        usbScanResult,
+                        usbConnection
+                    );
+                }
+                else {
+                    deviceStatus = formatUsbConnectionError(
+                        "Disconnect",
+                        disconnectResult
+                    );
+                }
+            }
+        }
+        else {
+            const bool canConnect =
+                !demoMode &&
+                (usbScanResult.status == EScanStatus::eSuccess) &&
+                !usbScanResult.devices.empty();
+
+            ImGui::BeginDisabled(!canConnect);
+            if (ImGui::Button("Connect", ImVec2(-1.0f, 32.0f))) {
+                const SUsbConnectionResult connectResult =
+                    oscilloscope::usb::connectToDevice(
+                        usbScanResult.devices.front(),
+                        &usbConnection
+                    );
+
+                if (connectResult.errorMessage.empty()) {
+                    connectedDevice = usbScanResult.devices.front();
+                    deviceStatus = formatUsbConnectionStatus(
+                        usbScanResult,
+                        usbConnection
+                    );
+                }
+                else {
+                    deviceStatus = formatUsbConnectionError(
+                        "Connect",
+                        connectResult
+                    );
+                }
+            }
+            ImGui::EndDisabled();
         }
         ImGui::Separator();
         ImGui::TextUnformatted("Horizontal");
@@ -270,7 +371,13 @@ int main (void) {
         bool newDemoMode = demoMode;
 
         if (ImGui::Checkbox("Demo mode", &newDemoMode)) {
-            updateDemoMode(&demoMode, &usbScanResult, &deviceStatus);
+            updateDemoMode(
+                &demoMode,
+                &usbScanResult,
+                &usbConnection,
+                &connectedDevice,
+                &deviceStatus
+            );
         }
         ImGui::EndChild();
 
@@ -299,6 +406,9 @@ int main (void) {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
+    if (usbConnection.isConnected) {
+        oscilloscope::usb::disconnectFromDevice(&usbConnection);
+    }
     SDL_GL_DeleteContext(glContext);
     SDL_DestroyWindow(window);
     SDL_Quit();
@@ -306,15 +416,43 @@ int main (void) {
 }
 /***************************** Private functions *****************************/
 
-static std::string formatUsbScanStatus(const SUsbScanResult &scanResult) {
+static bool isUsbDevicePresent(
+    const SUsbScanResult &scanResult,
+    const SUsbDeviceInfo &deviceInfo
+) {
+    bool isPresent = false;
+
+    for (const SUsbDeviceInfo &device : scanResult.devices) {
+        if (
+            (device.vendorId == deviceInfo.vendorId) &&
+            (device.productId == deviceInfo.productId) &&
+            (device.busNumber == deviceInfo.busNumber) &&
+            (device.deviceAddress == deviceInfo.deviceAddress)
+        ) {
+            isPresent = true;
+            break;
+        }
+    }
+
+    return isPresent;
+}
+
+static std::string formatUsbConnectionStatus(
+    const SUsbScanResult &scanResult,
+    const SUsbConnection &connection
+) {
     std::string status;
 
-    if (scanResult.status == EScanStatus::eSuccess) {
+    if (connection.isConnected) {
+        status = "Connected";
+    }
+    else if (scanResult.status == EScanStatus::eSuccess) {
         if (scanResult.devices.empty()) {
-            status = "No supported device";
+            status = "Disconnected: No supported device";
         }
         else {
-            status = scanResult.devices.front().modelName;
+            status = "Disconnected: ";
+            status += scanResult.devices.front().modelName;
             status += " detected";
         }
     }
@@ -326,16 +464,49 @@ static std::string formatUsbScanStatus(const SUsbScanResult &scanResult) {
     return status;
 }
 
+static std::string formatUsbConnectionError(
+    const char *operation,
+    const SUsbConnectionResult &result
+) {
+    std::string status = operation;
+
+    status += " error: ";
+    status += result.errorMessage;
+    return status;
+}
+
 static void updateDemoMode(
     bool *demoMode,
     SUsbScanResult *usbScanResult,
+    SUsbConnection *connection,
+    SUsbDeviceInfo *connectedDevice,
     std::string *deviceStatus
 ) {
+    bool updateStatus = true;
+
     *demoMode = !*demoMode;
 
-    if (!*demoMode) {
+    if (*demoMode) {
+        if (connection->isConnected) {
+            const SUsbConnectionResult disconnectResult =
+                oscilloscope::usb::disconnectFromDevice(connection);
+
+            *connectedDevice = {0U, 0U, 0U, 0U, NULL};
+            if (!disconnectResult.errorMessage.empty()) {
+                *deviceStatus = formatUsbConnectionError(
+                    "Disconnect",
+                    disconnectResult
+                );
+                updateStatus = false;
+            }
+        }
+    }
+    else {
         *usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
-        *deviceStatus = formatUsbScanStatus(*usbScanResult);
+    }
+
+    if (updateStatus) {
+        *deviceStatus = formatUsbConnectionStatus(*usbScanResult, *connection);
     }
 }
 

@@ -130,7 +130,7 @@ SUsbConnectionResult connectToDevice(
     const SUsbDeviceInfo &deviceInfo,
     SUsbConnection *connection
 ) {
-    SUsbConnectionResult result = {EConnectionStatus::eConnected, ""};
+    SUsbConnectionResult result = {EConnectionStatus::eDisconnected, ""};
     libusb_context *context = NULL;
     libusb_device **deviceList = NULL;
     libusb_device *device = NULL;
@@ -193,6 +193,7 @@ SUsbConnectionResult connectToDevice(
                             connection->interfaceNumber =
                                 supportedDevice->interfaceNumber;
                             connection->isConnected = true;
+                            result.status = EConnectionStatus::eConnected;
                             context = NULL;
                             handle = NULL;
                         }
@@ -231,7 +232,10 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
                 connection->interfaceNumber
             );
 
-            if (releaseResult != LIBUSB_SUCCESS) {
+            if (
+                (releaseResult != LIBUSB_SUCCESS) &&
+                (releaseResult != LIBUSB_ERROR_NO_DEVICE)
+            ) {
                 result.status = EConnectionStatus::eReleaseFailed;
                 result.errorMessage = libusb_error_name(releaseResult);
             }
