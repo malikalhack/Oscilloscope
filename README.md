@@ -62,16 +62,28 @@ The current application requires:
 - GNU Make for builds through `make`.
 - SDL2 development files;
 - OpenGL development files.
+- libusb-1.0 development files.
 
 On Debian, Ubuntu, and Linux Mint:
 
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential cmake make pkg-config libsdl2-dev libgl1-mesa-dev
+sudo apt-get install build-essential cmake make pkg-config libsdl2-dev libgl1-mesa-dev libusb-1.0-0-dev
 ```
 
-Dear ImGui is downloaded automatically by CMake during configuration. libusb
-will be required when the USB layer is implemented.
+Dear ImGui is downloaded automatically by CMake during configuration.
+
+### Hantek DSO-2250 USB Access
+
+Linux requires a udev rule for a regular desktop user to open the Hantek device
+through libusb. Install the supplied rule, reload udev rules, then reconnect the
+oscilloscope:
+
+```bash
+sudo cp usb/80-hantek-dso-2250.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
 
 ## Build
 

@@ -8,7 +8,11 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+CMakePresets.json
 CMakeUserPresets.json
+
+# VS code user files
+.vscode/*
 
 # Python cache
 __pycache__/
