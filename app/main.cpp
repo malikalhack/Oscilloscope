@@ -1,6 +1,6 @@
 /**
  * @file    main.cpp
- * @version 0.2.1
+ * @version 0.2.2
  * @authors Anton Chernov
  * @date    2026-08-28
  * @date    @showdate "%Y-%m-%d"
@@ -38,7 +38,7 @@
  * @def VERSION_PATCH
  * @brief Patch version number of Cypher (backwards-compatible bug fixes).
  */
-#define VERSION_PATCH     1
+#define VERSION_PATCH     2
 
 /**
  * @def VERSION_STRING
@@ -85,9 +85,9 @@ using oscilloscope::usb::SUsbScanResult;
 #ifdef __GNUC__  // GCC/MinGW only
 const char version_info[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
-    "FileVersion: 0.2.1.0\n"
+    "FileVersion: 0.2.2.0\n"
     "ProductName: Oscilloscope\n"
-    "ProductVersion: 0.2.1.0\n"
+    "ProductVersion: 0.2.2.0\n"
     "CompanyName: N/A\n"
     "LegalCopyright: Copyright (C) Anton Chernov, 2026\n"
     "OriginalFilename: run\n";
