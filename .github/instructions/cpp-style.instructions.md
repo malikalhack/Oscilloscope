@@ -148,6 +148,24 @@ success, leave it at the error default otherwise.
 | Enum values            | `eCamelCase`      | `eSoftware`, `eWatchDog`    |
 | Module-level statics   | `lower_snake_case`| `system_clock_hz`           |
 
+Pointer and reference declarators stay next to the variable name, not the type:
+
+```cpp
+int *value_ptr;
+const char *name;
+std::string &value_ref;
+const std::vector<int> &values;
+```
+The exception is the return types of functions:
+```cpp
+static libusb_device* findDeviceByInfo(
+    libusb_device **deviceList,
+    const SUsbDeviceInfo &deviceInfo,
+    const ssize_t deviceCount
+);
+```
+
+The structure variables are placed taking into account alignment and the minimum amount of padding.
 
 ## Conditional compilation
 

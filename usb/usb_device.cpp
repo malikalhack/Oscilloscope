@@ -19,7 +19,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/******************************* Included files ******************************/
+/******************************* Included files *******************************/
 #include <libusb-1.0/libusb.h>
 
 #include "usb_device.h"
@@ -69,7 +69,7 @@ static libusb_device* findDeviceByInfo(
     const ssize_t deviceCount
 );
 
-/********************* Application Programming Interface *********************/
+/********************* Application Programming Interface **********************/
 
 /** @fn enumerateSupportedDevices */
 SUsbScanResult enumerateSupportedDevices() {

@@ -79,10 +79,17 @@ Records key decisions, structural changes, and completed development stages.
 - Rescan automatically when switching from Demo mode to Live mode.
 - Verified detection with a connected Hantek DSO-2250 and a successful Release
   build.
+- Implemented device opening, USB interface claiming, interface release, and
+  handle/context cleanup for the selected Hantek DSO-2250.
+- Added Connect and Disconnect controls with connection state in the status
+  line.
+- Disconnect automatically when entering Demo mode, on device loss after a
+  rescan, and during application shutdown.
+- Added a Linux udev rule for non-root DSO-2250 access through libusb.
+- Verified the connect/disconnect lifecycle with a connected Hantek DSO-2250.
 
 ### Next USB tasks
 
-- Connect to the selected device and claim its USB interface.
 - Read endpoint data chunks in a dedicated acquisition path.
 - Add buffering between USB reads and waveform processing.
 - Handle timeouts, I/O errors, disconnects, and recovery states.
