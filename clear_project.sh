@@ -9,7 +9,7 @@
 clear
 
 out_app="./Output"
-out_docs="./docs/Out"
+out_docs="./docs/out"
 pycache="./__pycache__"
 
 # Clean application output directory

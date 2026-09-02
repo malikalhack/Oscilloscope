@@ -4,6 +4,7 @@
  * @authors Anton Chernov
  * @date    2026-09-01
  * @date    @showdate "%Y-%m-%d"
+ * @par
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
