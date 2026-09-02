@@ -21,6 +21,7 @@ Every `.c`/`.h`/`.cpp`/`.hpp` starts with this block (ISO 8601 dates, no
  * @version 1.0.0
  * @authors <author>
  * @date    YYYY-MM-DD
+ * @date    @showdate "%Y-%m-%d"
  */
 ```
 
