@@ -88,8 +88,37 @@ Records key decisions, structural changes, and completed development stages.
 - Added a Linux udev rule for non-root DSO-2250 access through libusb.
 - Verified the connect/disconnect lifecycle with a connected Hantek DSO-2250.
 
+## 2026-09-02
+
+### Research - FX2 firmware upload requirement
+
+- Investigated the old code for a host "presence ping" that would explain the
+  DSO-2250 status LED behavior (red blink on USB link, green blink on host
+  activity, long red+green during data bursts).
+- Found no dedicated ping command: `HantekDSOAThread::run()` in
+  `OldQtCode/src/hantekdsoathread.cpp` polls `dsoGetCaptureState` in a loop
+  with a `msleep(timeBase)` delay; the repeated bulk transaction itself is
+  what the firmware reports as host activity.
+- Found that the DSO-2250 uses a Cypress EZ-USB FX2 chip with RAM-resident
+  firmware. `OldQtCode/dsoextractfw/HantekDSO.rules` uploads
+  `DSO2250_firmware.hex` and `DSO2250_loader.hex` through `fxload` on every
+  USB "add" event; `OldQtCode/dsoextractfw/dsoextractfw.c` extracts those hex
+  files from the official Windows driver (`1.SYS`).
+- Until firmware is uploaded, the device stays in a bare bootloader state:
+  no status LED activity and no working bulk endpoints. This explains the
+  LED blinking seen on Windows (official driver uploads firmware
+  automatically) versus no blinking on Linux with the current codebase (no
+  firmware upload step exists yet, and no `.hex` firmware files are present
+  in this repository).
+- The firmware `.hex` files are not included in this repository (proprietary,
+  extracted from the official Windows driver); they must be supplied
+  separately before the USB layer can work end-to-end.
+
 ### Next USB tasks
 
+- Add a firmware upload step (fxload-equivalent control/bulk transfer) before
+  claiming the interface, sourcing `.hex` files from an external, user-
+  provided location.
 - Read endpoint data chunks in a dedicated acquisition path.
 - Add buffering between USB reads and waveform processing.
 - Handle timeouts, I/O errors, disconnects, and recovery states.

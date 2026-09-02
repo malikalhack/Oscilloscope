@@ -21,8 +21,14 @@
  */
 
 /******************************* Included files *******************************/
+#include <sys/stat.h>
+
+#include <cstdlib>
+#include <unistd.h>
+
 #include <libusb-1.0/libusb.h>
 
+#include "firmware_loader.h"
 #include "usb_device.h"
 
 /********************************* Definitions ********************************/
@@ -35,14 +41,21 @@ struct SSupportedDevice {
     uint16_t vendorId;
     uint16_t productId;
     uint8_t interfaceNumber;
+    uint8_t alternateSetting;
     const char *modelName;
+    const char *firmwareBaseName;
 };
+
+/** @brief Microseconds to wait for the FX2 chip to re-enumerate after upload */
+static const unsigned int FIRMWARE_REENUMERATION_DELAY_US = 1500000U;
 
 /****************************** Module variables ******************************/
 
 /** @brief Maps supported USB VID/PID pairs to model display names */
 static const SSupportedDevice supported_devices[] = {
-    {0x04B4U, 0x2250U, 0U, "Hantek DSO-2250"}
+    /* Alt setting 0 exposes no endpoints; alt setting 1 has the bulk pair
+     * (EP2 OUT / EP6 IN) that the FX2 firmware actually uses. */
+    {0x04B4U, 0x2250U, 0U, 1U, "Hantek DSO-2250", "DSO2250"}
 };
 
 /***************************** Private prototypes *****************************/
@@ -69,6 +82,48 @@ static libusb_device* findDeviceByInfo(
     const SUsbDeviceInfo &deviceInfo,
     const ssize_t deviceCount
 );
+
+/**
+ * @brief Finds the first connected device matching a VID/PID pair
+ * @param[in] deviceList libusb device list to search
+ * @param[in] vendorId USB vendor identifier to match
+ * @param[in] productId USB product identifier to match
+ * @param[in] deviceCount Number of entries in `deviceList`
+ * @returns Matching libusb device, or NULL when not found
+ */
+static libusb_device* findDeviceByVidPid(
+    libusb_device **deviceList,
+    uint16_t vendorId,
+    uint16_t productId,
+    const ssize_t deviceCount
+);
+
+/**
+ * @brief Checks whether a regular file exists at the given path
+ * @param[in] path File path to check
+ * @returns True when the file exists
+ */
+static bool firmwareFileExists(const std::string &path);
+
+/**
+ * @brief Builds the loader/firmware .hex paths for a supported model
+ * @param[in] supportedDevice Matching model entry
+ * @returns Loader and firmware .hex file locations
+ * @note The directory defaults to `firmware/` relative to the working
+ *       directory, and can be overridden with `OSCILLOSCOPE_FIRMWARE_DIR`.
+ *       When no override is set, a few common build/run working directories
+ *       are tried automatically.
+ */
+static SFirmwarePaths resolveFirmwarePaths(
+    const SSupportedDevice &supportedDevice
+);
+
+/**
+ * @brief Maps a libusb bulk transfer result code to a transfer status
+ * @param[in] transferResult Return value of `libusb_bulk_transfer`
+ * @returns Classified transfer status
+ */
+static EBulkTransferStatus classifyBulkTransferResult(int transferResult);
 
 /********************* Application Programming Interface **********************/
 
@@ -137,6 +192,7 @@ SUsbConnectionResult connectToDevice(
     libusb_device *device = NULL;
     libusb_device_handle *handle = NULL;
     const SSupportedDevice *supportedDevice = NULL;
+    SFirmwareLoadResult firmwareResult = {EFirmwareLoadStatus::eLoaded, ""};
     ssize_t deviceCount = 0;
     int initializationResult = LIBUSB_SUCCESS;
     int openResult = LIBUSB_SUCCESS;
@@ -172,6 +228,43 @@ SUsbConnectionResult connectToDevice(
                     result.errorMessage = "Requested USB device was not found";
                 }
                 else {
+                    firmwareResult = loadFx2Firmware(
+                        deviceInfo.busNumber,
+                        deviceInfo.deviceAddress,
+                        resolveFirmwarePaths(*supportedDevice)
+                    );
+
+                    if (firmwareResult.status != EFirmwareLoadStatus::eLoaded) {
+                        result.status = EConnectionStatus::eFirmwareLoadFailed;
+                        result.errorMessage = firmwareResult.errorMessage;
+                    }
+                    else {
+                        /* The FX2 chip re-enumerates once firmware starts
+                         * running, so the device pointer above is stale and
+                         * its bus address may have changed. */
+                        usleep(FIRMWARE_REENUMERATION_DELAY_US);
+                        libusb_free_device_list(deviceList, 1);
+                        deviceList = NULL;
+                        deviceCount = libusb_get_device_list(context, &deviceList);
+                        device = findDeviceByVidPid(
+                            deviceList,
+                            deviceInfo.vendorId,
+                            deviceInfo.productId,
+                            deviceCount
+                        );
+
+                        if ((deviceCount < 0) || (device == NULL)) {
+                            result.status = EConnectionStatus::eDeviceNotFound;
+                            result.errorMessage =
+                                "Device did not reappear after firmware upload";
+                        }
+                    }
+                }
+
+                if (
+                    (result.status != EConnectionStatus::eDeviceNotFound) &&
+                    (result.status != EConnectionStatus::eFirmwareLoadFailed)
+                ) {
                     openResult = libusb_open(device, &handle);
 
                     if (openResult != LIBUSB_SUCCESS) {
@@ -189,14 +282,32 @@ SUsbConnectionResult connectToDevice(
                             result.errorMessage = libusb_error_name(claimResult);
                         }
                         else {
-                            connection->context = context;
-                            connection->handle = handle;
-                            connection->interfaceNumber =
-                                supportedDevice->interfaceNumber;
-                            connection->isConnected = true;
-                            result.status = EConnectionStatus::eConnected;
-                            context = NULL;
-                            handle = NULL;
+                            const int setInterfaceResult =
+                                libusb_set_interface_alt_setting(
+                                    handle,
+                                    supportedDevice->interfaceNumber,
+                                    supportedDevice->alternateSetting
+                                );
+
+                            if (setInterfaceResult != LIBUSB_SUCCESS) {
+                                result.status = EConnectionStatus::eSetInterfaceFailed;
+                                result.errorMessage =
+                                    libusb_error_name(setInterfaceResult);
+                                libusb_release_interface(
+                                    handle,
+                                    supportedDevice->interfaceNumber
+                                );
+                            }
+                            else {
+                                connection->context = context;
+                                connection->handle = handle;
+                                connection->interfaceNumber =
+                                    supportedDevice->interfaceNumber;
+                                connection->isConnected = true;
+                                result.status = EConnectionStatus::eConnected;
+                                context = NULL;
+                                handle = NULL;
+                            }
                         }
                     }
                 }
@@ -258,6 +369,82 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
     return result;
 }
 
+/** @fn bulkWrite */
+SBulkTransferResult bulkWrite(
+    const SUsbConnection &connection,
+    const uint8_t endpointAddress,
+    const uint8_t *data,
+    const int length,
+    const unsigned int timeoutMs,
+    const unsigned int attempts
+) {
+    SBulkTransferResult result = {EBulkTransferStatus::eError, 0, ""};
+    int transferResult = LIBUSB_ERROR_TIMEOUT;
+    int transferredBytes = 0;
+    unsigned int attempt;
+
+    for (
+        attempt = 0U;
+        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
+        ++attempt
+    ) {
+        transferResult = libusb_bulk_transfer(
+            connection.handle,
+            endpointAddress,
+            const_cast<uint8_t*>(data),
+            length,
+            &transferredBytes,
+            timeoutMs
+        );
+    }
+
+    result.transferredBytes = transferredBytes;
+    result.status = classifyBulkTransferResult(transferResult);
+    if (result.status != EBulkTransferStatus::eSuccess) {
+        result.errorMessage = libusb_error_name(transferResult);
+    }
+
+    return result;
+}
+
+/** @fn bulkRead */
+SBulkTransferResult bulkRead(
+    const SUsbConnection &connection,
+    const uint8_t endpointAddress,
+    uint8_t *buffer,
+    const int length,
+    const unsigned int timeoutMs,
+    const unsigned int attempts
+) {
+    SBulkTransferResult result = {EBulkTransferStatus::eError, 0, ""};
+    int transferResult = LIBUSB_ERROR_TIMEOUT;
+    int transferredBytes = 0;
+    unsigned int attempt;
+
+    for (
+        attempt = 0U;
+        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
+        ++attempt
+    ) {
+        transferResult = libusb_bulk_transfer(
+            connection.handle,
+            endpointAddress,
+            buffer,
+            length,
+            &transferredBytes,
+            timeoutMs
+        );
+    }
+
+    result.transferredBytes = transferredBytes;
+    result.status = classifyBulkTransferResult(transferResult);
+    if (result.status != EBulkTransferStatus::eSuccess) {
+        result.errorMessage = libusb_error_name(transferResult);
+    }
+
+    return result;
+}
+
 /****************************** Private functions *****************************/
 
 /** @fn findSupportedDevice */
@@ -311,6 +498,100 @@ static libusb_device* findDeviceByInfo(
                 break;
             }
         }
+    }
+
+    return result;
+}
+
+/** @fn findDeviceByVidPid */
+static libusb_device* findDeviceByVidPid(
+    libusb_device **deviceList,
+    const uint16_t vendorId,
+    const uint16_t productId,
+    const ssize_t deviceCount
+) {
+    libusb_device *result = NULL;
+    libusb_device *candidate = NULL;
+    libusb_device_descriptor descriptor;
+    int descriptorResult = LIBUSB_ERROR_OTHER;
+
+    for (ssize_t index = 0; index < deviceCount; ++index) {
+        candidate = deviceList[index];
+        descriptorResult = libusb_get_device_descriptor(
+            candidate,
+            &descriptor
+        );
+
+        if (descriptorResult == LIBUSB_SUCCESS) {
+            if (
+                (descriptor.idVendor == vendorId) &&
+                (descriptor.idProduct == productId)
+            ) {
+                result = candidate;
+                break;
+            }
+        }
+    }
+
+    return result;
+}
+
+/** @fn resolveFirmwarePaths */
+static SFirmwarePaths resolveFirmwarePaths(
+    const SSupportedDevice &supportedDevice
+) {
+    static const char* const candidateDirs[] = {
+        "firmware", "../firmware", "../../firmware"
+    };
+    SFirmwarePaths paths;
+    const char *firmwareDir = getenv("OSCILLOSCOPE_FIRMWARE_DIR");
+    const size_t candidateCount =
+        sizeof(candidateDirs) / sizeof(candidateDirs[0]);
+    size_t index;
+
+    if (firmwareDir == NULL) {
+        firmwareDir = candidateDirs[0];
+
+        for (index = 0U; index < candidateCount; ++index) {
+            const std::string candidateLoaderPath =
+                std::string(candidateDirs[index]) + "/" +
+                supportedDevice.firmwareBaseName + "_loader.hex";
+
+            if (firmwareFileExists(candidateLoaderPath)) {
+                firmwareDir = candidateDirs[index];
+                break;
+            }
+        }
+    }
+
+    paths.loaderHexPath =
+        std::string(firmwareDir) + "/" +
+        supportedDevice.firmwareBaseName + "_loader.hex";
+    paths.firmwareHexPath =
+        std::string(firmwareDir) + "/" +
+        supportedDevice.firmwareBaseName + "_firmware.hex";
+
+    return paths;
+}
+
+/** @fn firmwareFileExists */
+static bool firmwareFileExists(const std::string &path) {
+    struct stat statBuffer;
+    return stat(path.c_str(), &statBuffer) == 0;
+}
+
+/** @fn classifyBulkTransferResult */
+static EBulkTransferStatus classifyBulkTransferResult(const int transferResult) {
+    EBulkTransferStatus result = EBulkTransferStatus::eError;
+
+    if (transferResult == LIBUSB_SUCCESS) {
+        result = EBulkTransferStatus::eSuccess;
+    }
+    else if (transferResult == LIBUSB_ERROR_TIMEOUT) {
+        result = EBulkTransferStatus::eTimeout;
+    }
+    else if (transferResult == LIBUSB_ERROR_NO_DEVICE) {
+        result = EBulkTransferStatus::eNoDevice;
     }
 
     return result;

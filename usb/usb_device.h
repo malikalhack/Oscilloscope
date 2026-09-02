@@ -48,8 +48,10 @@ enum class EConnectionStatus {
     eDisconnected,          /**< Device released and closed */
     eInitializationFailed,  /**< libusb context initialization failed */
     eDeviceNotFound,        /**< Matching device was not found */
+    eFirmwareLoadFailed,    /**< FX2 firmware upload failed */
     eOpenFailed,            /**< libusb_open failed */
     eClaimInterfaceFailed,  /**< libusb_claim_interface failed */
+    eSetInterfaceFailed,    /**< libusb_set_interface_alt_setting failed */
     eReleaseFailed          /**< libusb_release_interface failed */
 };
 
@@ -83,6 +85,21 @@ struct SUsbConnectionResult {
     std::string errorMessage;   /**< libusb error string when applicable */
 };
 
+/** @brief Describes the outcome of a bulk endpoint transfer */
+enum class EBulkTransferStatus {
+    eSuccess,    /**< The full requested length was transferred */
+    eTimeout,    /**< All retry attempts timed out */
+    eNoDevice,   /**< The device was disconnected mid-transfer */
+    eError       /**< Some other libusb error occurred */
+};
+
+/** @brief Holds the result of a bulk endpoint transfer */
+struct SBulkTransferResult {
+    EBulkTransferStatus status; /**< Transfer outcome */
+    int transferredBytes;       /**< Bytes actually transferred */
+    std::string errorMessage;   /**< libusb error string when applicable */
+};
+
 /********************* Application Programming Interface *********************/
 
 /**
@@ -96,6 +113,8 @@ SUsbScanResult enumerateSupportedDevices();
  * @param[in] deviceInfo Device descriptor returned by a scan result
  * @param[out] connection Connection state container that is filled in
  * @returns Connection status and error message when applicable
+ * @note Uploads the FX2 firmware first when the device is still in its bare
+ *       bootloader state; see `usb/firmware_loader.h`.
  */
 SUsbConnectionResult connectToDevice(
     const SUsbDeviceInfo &deviceInfo,
@@ -109,8 +128,45 @@ SUsbConnectionResult connectToDevice(
  */
 SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection);
 
+/**
+ * @brief Writes to a bulk OUT endpoint, retrying on timeout
+ * @param[in] connection Active connection to write through
+ * @param[in] endpointAddress Bulk OUT endpoint address (e.g. 0x02)
+ * @param[in] data Buffer to send
+ * @param[in] length Number of bytes to send
+ * @param[in] timeoutMs Per-attempt timeout in milliseconds
+ * @param[in] attempts Number of attempts before giving up on timeout
+ * @returns Transfer status, bytes transferred, and error message
+ */
+SBulkTransferResult bulkWrite(
+    const SUsbConnection &connection,
+    uint8_t endpointAddress,
+    const uint8_t *data,
+    int length,
+    unsigned int timeoutMs = 500U,
+    unsigned int attempts = 3U
+);
+
+/**
+ * @brief Reads from a bulk IN endpoint, retrying on timeout
+ * @param[in] connection Active connection to read from
+ * @param[in] endpointAddress Bulk IN endpoint address (e.g. 0x86)
+ * @param[out] buffer Buffer to receive into
+ * @param[in] length Number of bytes to read
+ * @param[in] timeoutMs Per-attempt timeout in milliseconds
+ * @param[in] attempts Number of attempts before giving up on timeout
+ * @returns Transfer status, bytes transferred, and error message
+ */
+SBulkTransferResult bulkRead(
+    const SUsbConnection &connection,
+    uint8_t endpointAddress,
+    uint8_t *buffer,
+    int length,
+    unsigned int timeoutMs = 500U,
+    unsigned int attempts = 3U
+);
+
 } // namespace usb
 } // namespace oscilloscope
-
-#endif // USB_DEVICE_H_
 /******************************************************************************/
+#endif // USB_DEVICE_H_

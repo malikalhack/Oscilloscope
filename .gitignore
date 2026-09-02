@@ -30,3 +30,6 @@ OldQtCode/
 WorkingDocs
 **/imgui.ini
 
+# Extracted proprietary FX2 firmware
+firmware/
+
