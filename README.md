@@ -41,6 +41,7 @@ Oscilloscope/
 ├── docs/           Project documentation.
 ├── firmware/       Default path for local device firmware files.
 ├── render/         Oscilloscope waveform rendering.
+├── tests/          Automated tests run through CTest.
 ├── tools/          Optional firmware extraction utilities.
 ├── ui/             User interface.
 ├── usb/            USB device communication.
