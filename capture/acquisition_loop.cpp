@@ -1,6 +1,6 @@
 /**
  * @file    acquisition_loop.cpp
- * @version 0.2.4
+ * @version 0.2.5
  * @authors Anton Chernov
  * @date    2026-09-02
  * @date    @showdate "%Y-%m-%d"
@@ -41,6 +41,9 @@ static const uint16_t EP_BULK_IN_MAX_PACKET_LEN = 512U;
 static const uint8_t CONTROL_GETSPEED = 0xB2U;
 static const uint8_t CONTROL_BEGINCOMMAND = 0xB3U;
 
+/** @brief Length of the FX2 connection-speed control response */
+static const uint16_t SPEED_RESPONSE_LEN = 10U;
+
 /** @brief Protocol command byte for the "get capture state" request */
 static const uint8_t CMD_GET_CAPTURE_STATE = 6U;
 
@@ -74,6 +77,17 @@ static usb::SUsbTransferResult executePollingTransaction(
     const usb::SUsbConnection &connection,
     uint8_t *response,
     EAcquisitionOperation *failedOperation
+);
+
+/**
+ * @brief Reads the FX2 connection-speed response used to pace the protocol
+ * @param[in] connection USB connection to read from
+ * @param[out] speedBuffer Buffer receiving the speed response
+ * @returns Transfer result of the control read
+ */
+static usb::SUsbTransferResult readConnectionSpeed(
+    const usb::SUsbConnection &connection,
+    uint8_t *speedBuffer
 );
 
 /********************* Application Programming Interface **********************/
@@ -190,7 +204,7 @@ static usb::SUsbTransferResult executePollingTransaction(
 ) {
     uint8_t beginCommandPayload[10] =
         {0x0FU, 0x03U, 0x03U, 0x03U, 0U, 0U, 0U, 0U, 0U, 0U};
-    uint8_t speedBuffer[10];
+    uint8_t speedBuffer[SPEED_RESPONSE_LEN];
     uint8_t captureStateCommand[2] = {CMD_GET_CAPTURE_STATE, 0U};
     usb::SUsbTransferResult result = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
@@ -210,17 +224,7 @@ static usb::SUsbTransferResult executePollingTransaction(
 
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eSpeedBeforeCommand;
-        result = usb::controlRead(
-            connection,
-            CONTROL_GETSPEED,
-            speedBuffer,
-            sizeof(speedBuffer),
-            0U,
-            0U,
-            TRANSFER_TIMEOUT_MS,
-            TRANSFER_ATTEMPTS,
-            1U
-        );
+        result = readConnectionSpeed(connection, speedBuffer);
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eCaptureStateCommand;
@@ -235,17 +239,7 @@ static usb::SUsbTransferResult executePollingTransaction(
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eSpeedBeforeResponse;
-        result = usb::controlRead(
-            connection,
-            CONTROL_GETSPEED,
-            speedBuffer,
-            sizeof(speedBuffer),
-            0U,
-            0U,
-            TRANSFER_TIMEOUT_MS,
-            TRANSFER_ATTEMPTS,
-            1U
-        );
+        result = readConnectionSpeed(connection, speedBuffer);
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eCaptureStateResponse;
@@ -264,6 +258,26 @@ static usb::SUsbTransferResult executePollingTransaction(
     }
 
     return result;
+}
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn readConnectionSpeed */
+static usb::SUsbTransferResult readConnectionSpeed(
+    const usb::SUsbConnection &connection,
+    uint8_t *speedBuffer
+) {
+    return usb::controlRead(
+        connection,
+        CONTROL_GETSPEED,
+        speedBuffer,
+        SPEED_RESPONSE_LEN,
+        0U,
+        0U,
+        TRANSFER_TIMEOUT_MS,
+        TRANSFER_ATTEMPTS,
+        1U
+    );
 }
 
 } // namespace capture

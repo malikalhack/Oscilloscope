@@ -11,7 +11,7 @@ is developed independently and has no Qt dependency.
 
 ## Status
 
-Current version: `0.2.2`.
+Current version: `0.2.5`.
 
 The current iteration provides a working USB connection and endpoint polling
 path for the Hantek DSO-2250:

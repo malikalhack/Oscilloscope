@@ -1,6 +1,6 @@
 /**
  * @file    firmware_loader.h
- * @version 0.2.4
+ * @version 0.2.5
  * @authors Anton Chernov
  * @date    2026-09-02
  * @date    @showdate "%Y-%m-%d"
@@ -69,6 +69,13 @@ SFirmwareLoadResult loadFx2Firmware(
     uint8_t deviceAddress,
     const SFirmwarePaths &paths
 );
+
+/**
+ * @brief Checks whether a regular file exists at the given path
+ * @param[in] path Filesystem path to test
+ * @returns True when a regular file exists at the path
+ */
+bool fileExists(const std::string &path);
 
 } // namespace usb
 } // namespace oscilloscope
