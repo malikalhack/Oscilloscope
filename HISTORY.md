@@ -190,10 +190,13 @@ Records key decisions, structural changes, and completed development stages.
   device is detected and a returned device appears without a manual rescan.
 - Removed the redundant manual rescan control and kept the device-disconnected
   status visible until the device returns.
+- Verified on physical hardware that idle disconnection is detected, the
+  disconnected status remains visible, and active acquisition behavior is
+  unchanged.
 
 ### Next USB tasks
 
 - Decode capture-state responses and acquired sample packets.
 - Add buffering between USB reads and waveform processing.
-- Verify idle disconnection detection, automatic return detection, and
-  transfer-error recovery with physical hardware.
+- Add deterministic fault-injection tests for timeout and transfer-error
+  recovery, then verify recovery with a connected physical device.

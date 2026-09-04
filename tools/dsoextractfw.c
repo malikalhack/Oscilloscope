@@ -6,7 +6,6 @@
  * @date    @showdate "%Y-%m-%d"
  * @brief Extracts Hantek FX2 firmware from an installed Windows driver
  * @par
- * Adapted from the GPL-2.0-or-later extractor in OldQtCode/dsoextractfw.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
