@@ -550,8 +550,8 @@ static void updateDemoMode(
     }
 }
 
-static void drawOscilloscopeGrid(ImDrawList* drawList, const ImVec2& position,
-    const ImVec2& size) {
+static void drawOscilloscopeGrid(ImDrawList *drawList, const ImVec2 &position,
+    const ImVec2 &size) {
     const ImU32 majorColor = IM_COL32(42, 75, 94, 255);
     const ImU32 minorColor = IM_COL32(25, 46, 60, 255);
     const int divisionsX = 10;
