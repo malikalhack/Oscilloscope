@@ -87,10 +87,11 @@ struct SUsbConnectionResult {
 
 /** @brief Describes the outcome of a bulk endpoint transfer */
 enum class EUsbTransferStatus {
-    eSuccess,    /**< The full requested length was transferred */
-    eTimeout,    /**< All retry attempts timed out */
-    eNoDevice,   /**< The device was disconnected mid-transfer */
-    eError       /**< Some other libusb error occurred */
+    eSuccess,       /**< The full requested length was transferred */
+    eTimeout,       /**< All retry attempts timed out */
+    eNoDevice,      /**< The device was disconnected mid-transfer */
+    eShortTransfer, /**< Fewer bytes than requested were transferred */
+    eError          /**< Some other libusb error occurred */
 };
 
 /** @brief Holds the result of a bulk endpoint transfer */
@@ -155,6 +156,7 @@ SUsbTransferResult bulkWrite(
  * @param[in] length Number of bytes to read
  * @param[in] timeoutMs Per-attempt timeout in milliseconds
  * @param[in] attempts Number of attempts before giving up on timeout
+ * @param[in] minimumLength Minimum valid response length in bytes
  * @returns Transfer status, bytes transferred, and error message
  */
 SUsbTransferResult bulkRead(
@@ -163,7 +165,8 @@ SUsbTransferResult bulkRead(
     uint8_t *buffer,
     int length,
     unsigned int timeoutMs = 500U,
-    unsigned int attempts = 3U
+    unsigned int attempts = 3U,
+    int minimumLength = 1
 );
 
 /**
@@ -199,6 +202,7 @@ SUsbTransferResult controlWrite(
  * @param[in] index wIndex field
  * @param[in] timeoutMs Per-attempt timeout in milliseconds
  * @param[in] attempts Number of attempts before giving up on timeout
+ * @param[in] minimumLength Minimum valid response length in bytes
  * @returns Transfer status, bytes transferred, and error message
  */
 SUsbTransferResult controlRead(
@@ -209,7 +213,8 @@ SUsbTransferResult controlRead(
     uint16_t value = 0U,
     uint16_t index = 0U,
     unsigned int timeoutMs = 500U,
-    unsigned int attempts = 3U
+    unsigned int attempts = 3U,
+    uint16_t minimumLength = 1U
 );
 
 } // namespace usb

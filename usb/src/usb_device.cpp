@@ -451,8 +451,19 @@ SUsbTransferResult bulkWrite(
 
     result.transferredBytes = transferredBytes;
     result.status = classifyBulkTransferResult(transferResult);
+    if (
+        (result.status == EUsbTransferStatus::eSuccess) &&
+        (transferredBytes != length)
+    ) {
+        result.status = EUsbTransferStatus::eShortTransfer;
+    }
     if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
+        if (result.status == EUsbTransferStatus::eShortTransfer) {
+            result.errorMessage = "short transfer";
+        }
+        else {
+            result.errorMessage = libusb_error_name(transferResult);
+        }
     }
 
     return result;
@@ -465,7 +476,8 @@ SUsbTransferResult bulkRead(
     uint8_t *buffer,
     const int length,
     const unsigned int timeoutMs,
-    const unsigned int attempts
+    const unsigned int attempts,
+    const int minimumLength
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
     int transferResult = LIBUSB_ERROR_TIMEOUT;
@@ -489,8 +501,19 @@ SUsbTransferResult bulkRead(
 
     result.transferredBytes = transferredBytes;
     result.status = classifyBulkTransferResult(transferResult);
+    if (
+        (result.status == EUsbTransferStatus::eSuccess) &&
+        (transferredBytes < minimumLength)
+    ) {
+        result.status = EUsbTransferStatus::eShortTransfer;
+    }
     if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
+        if (result.status == EUsbTransferStatus::eShortTransfer) {
+            result.errorMessage = "short transfer";
+        }
+        else {
+            result.errorMessage = libusb_error_name(transferResult);
+        }
     }
 
     return result;
@@ -531,8 +554,19 @@ SUsbTransferResult controlWrite(
 
     result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
     result.status = classifyControlTransferResult(transferResult);
+    if (
+        (result.status == EUsbTransferStatus::eSuccess) &&
+        (result.transferredBytes != static_cast<int>(length))
+    ) {
+        result.status = EUsbTransferStatus::eShortTransfer;
+    }
     if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
+        if (result.status == EUsbTransferStatus::eShortTransfer) {
+            result.errorMessage = "short transfer";
+        }
+        else {
+            result.errorMessage = libusb_error_name(transferResult);
+        }
     }
 
     return result;
@@ -547,7 +581,8 @@ SUsbTransferResult controlRead(
     const uint16_t value,
     const uint16_t index,
     const unsigned int timeoutMs,
-    const unsigned int attempts
+    const unsigned int attempts,
+    const uint16_t minimumLength
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
     int transferResult = LIBUSB_ERROR_TIMEOUT;
@@ -573,8 +608,19 @@ SUsbTransferResult controlRead(
 
     result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
     result.status = classifyControlTransferResult(transferResult);
+    if (
+        (result.status == EUsbTransferStatus::eSuccess) &&
+        (result.transferredBytes < static_cast<int>(minimumLength))
+    ) {
+        result.status = EUsbTransferStatus::eShortTransfer;
+    }
     if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
+        if (result.status == EUsbTransferStatus::eShortTransfer) {
+            result.errorMessage = "short transfer";
+        }
+        else {
+            result.errorMessage = libusb_error_name(transferResult);
+        }
     }
 
     return result;
