@@ -34,11 +34,37 @@
 namespace oscilloscope {
 namespace capture {
 
-/** @brief Poll counters and last observed state, safe to read from any thread */
+/** @brief Describes the current state of the acquisition worker */
+enum class EAcquisitionState {
+    eStopped,    /**< The worker is not running */
+    eRunning,    /**< Polling is proceeding normally */
+    eRecovering, /**< A transient USB error is being retried */
+    eDeviceLost, /**< The USB device was disconnected */
+    eFailed      /**< The recovery limit was exhausted */
+};
+
+/** @brief Identifies the transfer that failed in a polling transaction */
+enum class EAcquisitionOperation {
+    eNone,                 /**< No transfer has failed */
+    eBeginCommand,         /**< Begin-command control write */
+    eSpeedBeforeCommand,   /**< Speed control read before command write */
+    eCaptureStateCommand,  /**< Capture-state bulk command write */
+    eSpeedBeforeResponse,  /**< Speed control read before response read */
+    eCaptureStateResponse  /**< Capture-state bulk response read */
+};
+
+/** @brief Acquisition state safe to read from any thread */
 struct SAcquisitionStatus {
-    std::atomic<unsigned long> pollCount{0UL};   /**< Successful poll cycles */
-    std::atomic<unsigned long> errorCount{0UL};  /**< Failed poll cycles */
-    std::atomic<int> lastCaptureState{-1};        /**< Last raw capture state */
+    std::atomic<int> lastCaptureState{-1};       /**< Last raw capture state */
+    std::atomic<EAcquisitionState> state{
+        EAcquisitionState::eStopped
+    }; /**< Current worker state */
+    std::atomic<EAcquisitionOperation> failedOperation{
+        EAcquisitionOperation::eNone
+    }; /**< Most recent failed operation */
+    std::atomic<usb::EUsbTransferStatus> lastTransferStatus{
+        usb::EUsbTransferStatus::eSuccess
+    }; /**< Most recent failed transfer status */
 };
 
 /** @brief Owns the background polling thread and its shared status */
@@ -68,6 +94,13 @@ void startAcquisitionLoop(
  * @note Must be called before disconnecting the underlying USB connection.
  */
 void stopAcquisitionLoop(SAcquisitionLoop *loop);
+
+/**
+ * @brief Joins a worker that ended because of a terminal USB error
+ * @param[in,out] loop Loop control block containing the finished worker
+ * @returns True when a terminal worker was joined
+ */
+bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop);
 
 } // namespace capture
 } // namespace oscilloscope

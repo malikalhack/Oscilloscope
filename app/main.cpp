@@ -76,7 +76,10 @@
 #include "usb_device.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
+using oscilloscope::capture::EAcquisitionOperation;
+using oscilloscope::capture::EAcquisitionState;
 using oscilloscope::usb::EScanStatus;
+using oscilloscope::usb::EUsbTransferStatus;
 using oscilloscope::usb::SUsbConnection;
 using oscilloscope::usb::SUsbConnectionResult;
 using oscilloscope::usb::SUsbDeviceInfo;
@@ -116,6 +119,10 @@ static std::string formatUsbConnectionStatus(
 static std::string formatUsbConnectionError(
     const char *operation,
     const SUsbConnectionResult &result
+);
+static std::string formatAcquisitionError(
+    EAcquisitionOperation operation,
+    EUsbTransferStatus transferStatus
 );
 static void updateDemoMode(
     bool *demoMode,
@@ -229,6 +236,32 @@ int main (void) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
+
+        const EAcquisitionState acquisitionState =
+            acquisitionLoop.status.state.load();
+        if (
+            acquisitionRunning &&
+            ((acquisitionState == EAcquisitionState::eDeviceLost) ||
+             (acquisitionState == EAcquisitionState::eFailed))
+        ) {
+            const std::string acquisitionError = formatAcquisitionError(
+                acquisitionLoop.status.failedOperation.load(),
+                acquisitionLoop.status.lastTransferStatus.load()
+            );
+
+            oscilloscope::capture::joinFinishedAcquisitionLoop(
+                &acquisitionLoop
+            );
+            acquisitionRunning = false;
+            if (acquisitionState == EAcquisitionState::eDeviceLost) {
+                oscilloscope::usb::disconnectFromDevice(&usbConnection);
+                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceStatus = "Device disconnected: " + acquisitionError;
+            }
+            else {
+                deviceStatus = "Acquisition stopped: " + acquisitionError;
+            }
+        }
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
@@ -436,14 +469,16 @@ int main (void) {
 
         ImGui::SetCursorScreenPos(statusPosition);
         ImGui::Text(
-            "%s | %s | %s | CH1 %s | CH2 %s | polls %lu err %lu",
-            acquisitionRunning ? "Acquiring" : "Stopped",
+            "%s | %s | %s | CH1 %s | CH2 %s",
+            acquisitionRunning
+                ? (acquisitionLoop.status.state.load() ==
+                    EAcquisitionState::eRecovering
+                    ? "Recovering USB connection" : "Acquiring")
+                : "Stopped",
             demoMode ? "Demo mode" : "Live mode",
             deviceStatus.c_str(),
             channelEnabled[0] ? "on" : "off",
-            channelEnabled[1] ? "on" : "off",
-            acquisitionLoop.status.pollCount.load(),
-            acquisitionLoop.status.errorCount.load()
+            channelEnabled[1] ? "on" : "off"
         );
         ImGui::End();
 
@@ -528,6 +563,53 @@ static std::string formatUsbConnectionError(
 
     status += " error: ";
     status += result.errorMessage;
+    return status;
+}
+
+static std::string formatAcquisitionError(
+    const EAcquisitionOperation operation,
+    const EUsbTransferStatus transferStatus
+) {
+    std::string status;
+
+    switch (transferStatus) {
+        case EUsbTransferStatus::eTimeout:
+            status = "USB timeout";
+            break;
+        case EUsbTransferStatus::eNoDevice:
+            status = "USB device lost";
+            break;
+        case EUsbTransferStatus::eShortTransfer:
+            status = "Incomplete USB response";
+            break;
+        case EUsbTransferStatus::eError:
+            status = "USB I/O error";
+            break;
+        case EUsbTransferStatus::eSuccess:
+        default:
+            status = "USB acquisition error";
+            break;
+    }
+
+    switch (operation) {
+        case EAcquisitionOperation::eBeginCommand:
+            status += " while beginning command";
+            break;
+        case EAcquisitionOperation::eSpeedBeforeCommand:
+        case EAcquisitionOperation::eSpeedBeforeResponse:
+            status += " while checking connection speed";
+            break;
+        case EAcquisitionOperation::eCaptureStateCommand:
+            status += " while sending capture-state command";
+            break;
+        case EAcquisitionOperation::eCaptureStateResponse:
+            status += " while reading capture state";
+            break;
+        case EAcquisitionOperation::eNone:
+        default:
+            break;
+    }
+
     return status;
 }
 

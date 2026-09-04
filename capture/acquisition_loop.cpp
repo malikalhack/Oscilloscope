@@ -21,7 +21,6 @@
  */
 
 /******************************* Included files *******************************/
-#include <cstdio>
 #include <chrono>
 
 #include "acquisition_loop.h"
@@ -47,6 +46,10 @@ static const uint8_t CMD_GET_CAPTURE_STATE = 6U;
 
 /** @brief Delay between poll cycles; also the effective host-activity rate */
 static const unsigned int POLL_INTERVAL_MS = 100U;
+static const unsigned int RECOVERY_INTERVAL_MS = 250U;
+static const unsigned int TRANSFER_TIMEOUT_MS = 250U;
+static const unsigned int TRANSFER_ATTEMPTS = 1U;
+static const unsigned int MAX_CONSECUTIVE_FAILURES = 3U;
 
 /***************************** Private prototypes *****************************/
 
@@ -60,6 +63,19 @@ static void pollCaptureState(
     usb::SUsbConnection connection
 );
 
+/**
+ * @brief Executes one complete capture-state polling transaction
+ * @param[in] connection USB connection to poll
+ * @param[out] response Buffer receiving the capture-state response
+ * @param[out] failedOperation First operation that failed
+ * @returns Result of the first failed operation or the final successful read
+ */
+static usb::SUsbTransferResult executePollingTransaction(
+    const usb::SUsbConnection &connection,
+    uint8_t *response,
+    EAcquisitionOperation *failedOperation
+);
+
 /********************* Application Programming Interface **********************/
 
 /** @fn startAcquisitionLoop */
@@ -69,11 +85,35 @@ void startAcquisitionLoop(
 ) {
     if (loop != NULL) {
         loop->stopRequested.store(false);
-        loop->status.pollCount.store(0UL);
-        loop->status.errorCount.store(0UL);
         loop->status.lastCaptureState.store(-1);
+        loop->status.state.store(EAcquisitionState::eRunning);
+        loop->status.failedOperation.store(EAcquisitionOperation::eNone);
+        loop->status.lastTransferStatus.store(
+            usb::EUsbTransferStatus::eSuccess
+        );
         loop->workerThread = std::thread(pollCaptureState, loop, connection);
     }
+}
+
+/** @fn joinFinishedAcquisitionLoop */
+bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop) {
+    bool joined = false;
+    EAcquisitionState state = EAcquisitionState::eStopped;
+
+    if (loop != NULL) {
+        state = loop->status.state.load();
+        if (
+            (state == EAcquisitionState::eDeviceLost) ||
+            (state == EAcquisitionState::eFailed)
+        ) {
+            if (loop->workerThread.joinable()) {
+                loop->workerThread.join();
+            }
+            joined = true;
+        }
+    }
+
+    return joined;
 }
 
 /** @fn stopAcquisitionLoop */
@@ -83,6 +123,7 @@ void stopAcquisitionLoop(SAcquisitionLoop *loop) {
         if (loop->workerThread.joinable()) {
             loop->workerThread.join();
         }
+        loop->status.state.store(EAcquisitionState::eStopped);
     }
 }
 
@@ -93,76 +134,136 @@ static void pollCaptureState(
     SAcquisitionLoop *loop,
     usb::SUsbConnection connection
 ) {
+    uint8_t response[EP_BULK_IN_MAX_PACKET_LEN];
+    usb::SUsbTransferResult transferResult = {
+        usb::EUsbTransferStatus::eSuccess, 0, ""
+    };
+    EAcquisitionOperation failedOperation = EAcquisitionOperation::eNone;
+    unsigned int consecutiveFailures = 0U;
+    unsigned int delayMs = POLL_INTERVAL_MS;
+
+    while (!loop->stopRequested.load()) {
+        transferResult = executePollingTransaction(
+            connection, response, &failedOperation
+        );
+
+        if (transferResult.status == usb::EUsbTransferStatus::eSuccess) {
+            loop->status.lastCaptureState.store(static_cast<int>(response[0]));
+            loop->status.state.store(EAcquisitionState::eRunning);
+            loop->status.failedOperation.store(EAcquisitionOperation::eNone);
+            loop->status.lastTransferStatus.store(
+                usb::EUsbTransferStatus::eSuccess
+            );
+            consecutiveFailures = 0U;
+            delayMs = POLL_INTERVAL_MS;
+        }
+        else {
+            loop->status.failedOperation.store(failedOperation);
+            loop->status.lastTransferStatus.store(transferResult.status);
+            ++consecutiveFailures;
+
+            if (transferResult.status == usb::EUsbTransferStatus::eNoDevice) {
+                loop->status.state.store(EAcquisitionState::eDeviceLost);
+                break;
+            }
+            else if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                loop->status.state.store(EAcquisitionState::eFailed);
+                break;
+            }
+            else {
+                loop->status.state.store(EAcquisitionState::eRecovering);
+                delayMs = RECOVERY_INTERVAL_MS;
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    }
+}
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn executePollingTransaction */
+static usb::SUsbTransferResult executePollingTransaction(
+    const usb::SUsbConnection &connection,
+    uint8_t *response,
+    EAcquisitionOperation *failedOperation
+) {
     uint8_t beginCommandPayload[10] =
         {0x0FU, 0x03U, 0x03U, 0x03U, 0U, 0U, 0U, 0U, 0U, 0U};
     uint8_t speedBuffer[10];
     uint8_t captureStateCommand[2] = {CMD_GET_CAPTURE_STATE, 0U};
-    uint8_t response[EP_BULK_IN_MAX_PACKET_LEN];
-    usb::SUsbTransferResult beginResult = {
-        usb::EUsbTransferStatus::eError, 0, ""
+    usb::SUsbTransferResult result = {
+        usb::EUsbTransferStatus::eSuccess, 0, ""
     };
-    usb::SUsbTransferResult speedResult = {
-        usb::EUsbTransferStatus::eError, 0, ""
-    };
-    usb::SUsbTransferResult writeResult = {usb::EUsbTransferStatus::eError, 0, ""};
-    usb::SUsbTransferResult readSpeedResult = {
-        usb::EUsbTransferStatus::eError, 0, ""
-    };
-    usb::SUsbTransferResult readResult = {usb::EUsbTransferStatus::eError, 0, ""};
 
-    while (!loop->stopRequested.load()) {
-        beginResult = usb::controlWrite(
+    *failedOperation = EAcquisitionOperation::eBeginCommand;
+    result = usb::controlWrite(
+        connection,
+        CONTROL_BEGINCOMMAND,
+        beginCommandPayload,
+        sizeof(beginCommandPayload),
+        0U,
+        0U,
+        TRANSFER_TIMEOUT_MS,
+        TRANSFER_ATTEMPTS
+    );
+
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eSpeedBeforeCommand;
+        result = usb::controlRead(
             connection,
-            CONTROL_BEGINCOMMAND,
-            beginCommandPayload,
-            sizeof(beginCommandPayload)
+            CONTROL_GETSPEED,
+            speedBuffer,
+            sizeof(speedBuffer),
+            0U,
+            0U,
+            TRANSFER_TIMEOUT_MS,
+            TRANSFER_ATTEMPTS,
+            1U
         );
-        speedResult = usb::controlRead(
-            connection, CONTROL_GETSPEED, speedBuffer, sizeof(speedBuffer)
-        );
-        writeResult = usb::bulkWrite(
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eCaptureStateCommand;
+        result = usb::bulkWrite(
             connection,
             EP_BULK_OUT,
             captureStateCommand,
-            sizeof(captureStateCommand)
-        );
-        readSpeedResult = usb::controlRead(
-            connection, CONTROL_GETSPEED, speedBuffer, sizeof(speedBuffer)
-        );
-        readResult = usb::bulkRead(
-            connection, EP_BULK_IN, response, EP_BULK_IN_MAX_PACKET_LEN
-        );
-
-        if (
-            (beginResult.status == usb::EUsbTransferStatus::eSuccess) &&
-            (speedResult.status == usb::EUsbTransferStatus::eSuccess) &&
-            (writeResult.status == usb::EUsbTransferStatus::eSuccess) &&
-            (readSpeedResult.status == usb::EUsbTransferStatus::eSuccess) &&
-            (readResult.status == usb::EUsbTransferStatus::eSuccess)
-        ) {
-            loop->status.pollCount.fetch_add(1UL);
-            loop->status.lastCaptureState.store(
-                static_cast<int>(response[0])
-            );
-        }
-        else {
-            loop->status.errorCount.fetch_add(1UL);
-            fprintf(
-                stderr,
-                "acquisition poll failed: begin=%s speed=%s write=%s "
-                "read-speed=%s read=%s\n",
-                beginResult.errorMessage.c_str(),
-                speedResult.errorMessage.c_str(),
-                writeResult.errorMessage.c_str(),
-                readSpeedResult.errorMessage.c_str(),
-                readResult.errorMessage.c_str()
-            );
-        }
-
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(POLL_INTERVAL_MS)
+            sizeof(captureStateCommand),
+            TRANSFER_TIMEOUT_MS,
+            TRANSFER_ATTEMPTS
         );
     }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eSpeedBeforeResponse;
+        result = usb::controlRead(
+            connection,
+            CONTROL_GETSPEED,
+            speedBuffer,
+            sizeof(speedBuffer),
+            0U,
+            0U,
+            TRANSFER_TIMEOUT_MS,
+            TRANSFER_ATTEMPTS,
+            1U
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eCaptureStateResponse;
+        result = usb::bulkRead(
+            connection,
+            EP_BULK_IN,
+            response,
+            EP_BULK_IN_MAX_PACKET_LEN,
+            TRANSFER_TIMEOUT_MS,
+            TRANSFER_ATTEMPTS,
+            4
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eNone;
+    }
+
+    return result;
 }
 
 } // namespace capture
