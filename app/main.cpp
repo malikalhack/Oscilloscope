@@ -76,13 +76,19 @@
 #include "usb_device.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
+using oscilloscope::capture::EAcquisitionOperation;
+using oscilloscope::capture::EAcquisitionState;
 using oscilloscope::usb::EScanStatus;
+using oscilloscope::usb::EUsbTransferStatus;
 using oscilloscope::usb::SUsbConnection;
 using oscilloscope::usb::SUsbConnectionResult;
 using oscilloscope::usb::SUsbDeviceInfo;
 using oscilloscope::usb::SUsbScanResult;
 
 /***************************** Private variables *****************************/
+
+/** @brief Interval between USB presence checks outside acquisition */
+static const uint32_t USB_PRESENCE_INTERVAL_MS = 1000U;
 
 #ifdef __GNUC__  // GCC/MinGW only
 const char version_info[] __attribute__((section(".version"), used)) =
@@ -116,6 +122,10 @@ static std::string formatUsbConnectionStatus(
 static std::string formatUsbConnectionError(
     const char *operation,
     const SUsbConnectionResult &result
+);
+static std::string formatAcquisitionError(
+    EAcquisitionOperation operation,
+    EUsbTransferStatus transferStatus
 );
 static void updateDemoMode(
     bool *demoMode,
@@ -193,6 +203,7 @@ int main (void) {
 
     bool running = true;
     bool acquisitionRunning = false;
+    bool deviceWasDisconnected = false;
     bool channelEnabled[] = {true, true};
     int timebase = 6;
     int voltsPerDivision[] = {2, 2};
@@ -208,6 +219,8 @@ int main (void) {
         usbScanResult,
         usbConnection
     );
+    uint32_t nextUsbPresenceCheck =
+        SDL_GetTicks() + USB_PRESENCE_INTERVAL_MS;
     const char* timebases[] = {
         "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
         "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
@@ -229,6 +242,68 @@ int main (void) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
+
+        const EAcquisitionState acquisitionState =
+            acquisitionLoop.status.state.load();
+        if (
+            acquisitionRunning &&
+            ((acquisitionState == EAcquisitionState::eDeviceLost) ||
+             (acquisitionState == EAcquisitionState::eFailed))
+        ) {
+            const std::string acquisitionError = formatAcquisitionError(
+                acquisitionLoop.status.failedOperation.load(),
+                acquisitionLoop.status.lastTransferStatus.load()
+            );
+
+            oscilloscope::capture::joinFinishedAcquisitionLoop(
+                &acquisitionLoop
+            );
+            acquisitionRunning = false;
+            if (acquisitionState == EAcquisitionState::eDeviceLost) {
+                oscilloscope::usb::disconnectFromDevice(&usbConnection);
+                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceWasDisconnected = true;
+                deviceStatus = "Device disconnected: " + acquisitionError;
+            }
+            else {
+                deviceStatus = "Acquisition stopped: " + acquisitionError;
+            }
+        }
+
+        const uint32_t currentTicks = SDL_GetTicks();
+        if (
+            !demoMode &&
+            !acquisitionRunning &&
+            (static_cast<int32_t>(currentTicks - nextUsbPresenceCheck) >= 0)
+        ) {
+            usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
+            nextUsbPresenceCheck =
+                currentTicks + USB_PRESENCE_INTERVAL_MS;
+
+            if (
+                usbConnection.isConnected &&
+                (usbScanResult.status == EScanStatus::eSuccess) &&
+                !isUsbDevicePresent(usbScanResult, connectedDevice)
+            ) {
+                oscilloscope::usb::disconnectFromDevice(&usbConnection);
+                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceWasDisconnected = true;
+                deviceStatus = "Device disconnected";
+            }
+            else if (
+                !usbConnection.isConnected &&
+                (!usbScanResult.devices.empty() ||
+                 !deviceWasDisconnected)
+            ) {
+                if (!usbScanResult.devices.empty()) {
+                    deviceWasDisconnected = false;
+                }
+                deviceStatus = formatUsbConnectionStatus(
+                    usbScanResult,
+                    usbConnection
+                );
+            }
+        }
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
@@ -309,43 +384,12 @@ int main (void) {
                         &acquisitionLoop,
                         usbConnection
                     );
-                }
-                acquisitionRunning = true;
-            }
-        }
-        ImGui::EndDisabled();
-        ImGui::BeginDisabled(usbConnection.isConnected);
-        if (ImGui::Button("Rescan devices", ImVec2(-1.0f, 32.0f))) {
-            usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
-
-            if (
-                usbConnection.isConnected &&
-                !isUsbDevicePresent(usbScanResult, connectedDevice)
-            ) {
-                oscilloscope::capture::stopAcquisitionLoop(&acquisitionLoop);
-                acquisitionRunning = false;
-                const SUsbConnectionResult disconnectResult =
-                    oscilloscope::usb::disconnectFromDevice(&usbConnection);
-
-                connectedDevice = {0U, 0U, 0U, 0U, NULL};
-                if (disconnectResult.errorMessage.empty()) {
                     deviceStatus = formatUsbConnectionStatus(
                         usbScanResult,
                         usbConnection
                     );
                 }
-                else {
-                    deviceStatus = formatUsbConnectionError(
-                        "Disconnect",
-                        disconnectResult
-                    );
-                }
-            }
-            else {
-                deviceStatus = formatUsbConnectionStatus(
-                    usbScanResult,
-                    usbConnection
-                );
+                acquisitionRunning = true;
             }
         }
         ImGui::EndDisabled();
@@ -358,6 +402,7 @@ int main (void) {
                     oscilloscope::usb::disconnectFromDevice(&usbConnection);
 
                 connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceWasDisconnected = false;
                 if (disconnectResult.errorMessage.empty()) {
                     deviceStatus = formatUsbConnectionStatus(
                         usbScanResult,
@@ -387,11 +432,25 @@ int main (void) {
                     );
 
                 if (connectResult.errorMessage.empty()) {
-                    connectedDevice = usbScanResult.devices.front();
-                    deviceStatus = formatUsbConnectionStatus(
-                        usbScanResult,
-                        usbConnection
-                    );
+                    if (
+                        oscilloscope::usb::getConnectedDeviceInfo(
+                            usbConnection,
+                            &connectedDevice
+                        )
+                    ) {
+                        deviceWasDisconnected = false;
+                        deviceStatus = formatUsbConnectionStatus(
+                            usbScanResult,
+                            usbConnection
+                        );
+                    }
+                    else {
+                        oscilloscope::usb::disconnectFromDevice(
+                            &usbConnection
+                        );
+                        deviceStatus =
+                            "Connect error: Cannot identify USB device";
+                    }
                 }
                 else {
                     deviceStatus = formatUsbConnectionError(
@@ -436,14 +495,16 @@ int main (void) {
 
         ImGui::SetCursorScreenPos(statusPosition);
         ImGui::Text(
-            "%s | %s | %s | CH1 %s | CH2 %s | polls %lu err %lu",
-            acquisitionRunning ? "Acquiring" : "Stopped",
+            "%s | %s | %s | CH1 %s | CH2 %s",
+            acquisitionRunning
+                ? (acquisitionLoop.status.state.load() ==
+                    EAcquisitionState::eRecovering
+                    ? "Recovering USB connection" : "Acquiring")
+                : "Stopped",
             demoMode ? "Demo mode" : "Live mode",
             deviceStatus.c_str(),
             channelEnabled[0] ? "on" : "off",
-            channelEnabled[1] ? "on" : "off",
-            acquisitionLoop.status.pollCount.load(),
-            acquisitionLoop.status.errorCount.load()
+            channelEnabled[1] ? "on" : "off"
         );
         ImGui::End();
 
@@ -528,6 +589,53 @@ static std::string formatUsbConnectionError(
 
     status += " error: ";
     status += result.errorMessage;
+    return status;
+}
+
+static std::string formatAcquisitionError(
+    const EAcquisitionOperation operation,
+    const EUsbTransferStatus transferStatus
+) {
+    std::string status;
+
+    switch (transferStatus) {
+        case EUsbTransferStatus::eTimeout:
+            status = "USB timeout";
+            break;
+        case EUsbTransferStatus::eNoDevice:
+            status = "USB device lost";
+            break;
+        case EUsbTransferStatus::eShortTransfer:
+            status = "Incomplete USB response";
+            break;
+        case EUsbTransferStatus::eError:
+            status = "USB I/O error";
+            break;
+        case EUsbTransferStatus::eSuccess:
+        default:
+            status = "USB acquisition error";
+            break;
+    }
+
+    switch (operation) {
+        case EAcquisitionOperation::eBeginCommand:
+            status += " while beginning command";
+            break;
+        case EAcquisitionOperation::eSpeedBeforeCommand:
+        case EAcquisitionOperation::eSpeedBeforeResponse:
+            status += " while checking connection speed";
+            break;
+        case EAcquisitionOperation::eCaptureStateCommand:
+            status += " while sending capture-state command";
+            break;
+        case EAcquisitionOperation::eCaptureStateResponse:
+            status += " while reading capture state";
+            break;
+        case EAcquisitionOperation::eNone:
+        default:
+            break;
+    }
+
     return status;
 }
 

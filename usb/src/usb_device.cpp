@@ -143,6 +143,21 @@ static EUsbTransferStatus classifyBulkTransferResult(int transferResult);
  */
 static EUsbTransferStatus classifyControlTransferResult(int transferResult);
 
+/**
+ * @brief Builds a transfer result and validates its minimum byte count
+ * @param[in] status Status classified from the libusb return value
+ * @param[in] transferResult Raw libusb return value for error reporting
+ * @param[in] transferredBytes Number of bytes transferred
+ * @param[in] minimumLength Minimum valid transfer length
+ * @returns Complete transfer result for the public USB API
+ */
+static SUsbTransferResult makeTransferResult(
+    EUsbTransferStatus status,
+    int transferResult,
+    int transferredBytes,
+    int minimumLength
+);
+
 /********************* Application Programming Interface **********************/
 
 /** @fn enumerateSupportedDevices */
@@ -420,6 +435,45 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
     return result;
 }
 
+/** @fn getConnectedDeviceInfo */
+bool getConnectedDeviceInfo(
+    const SUsbConnection &connection,
+    SUsbDeviceInfo *deviceInfo
+) {
+    bool result = false;
+    libusb_device *device = NULL;
+    libusb_device_descriptor descriptor;
+    const SSupportedDevice *supportedDevice = NULL;
+    int descriptorResult = LIBUSB_ERROR_INVALID_PARAM;
+
+    if (
+        connection.isConnected &&
+        (connection.handle != NULL) &&
+        (deviceInfo != NULL)
+    ) {
+        device = libusb_get_device(connection.handle);
+        descriptorResult = libusb_get_device_descriptor(device, &descriptor);
+        if (descriptorResult == LIBUSB_SUCCESS) {
+            supportedDevice = findSupportedDevice(
+                descriptor.idVendor,
+                descriptor.idProduct
+            );
+            if (supportedDevice != NULL) {
+                *deviceInfo = {
+                    descriptor.idVendor,
+                    descriptor.idProduct,
+                    libusb_get_bus_number(device),
+                    libusb_get_device_address(device),
+                    supportedDevice->modelName
+                };
+                result = true;
+            }
+        }
+    }
+
+    return result;
+}
+
 /** @fn bulkWrite */
 SUsbTransferResult bulkWrite(
     const SUsbConnection &connection,
@@ -449,11 +503,12 @@ SUsbTransferResult bulkWrite(
         );
     }
 
-    result.transferredBytes = transferredBytes;
-    result.status = classifyBulkTransferResult(transferResult);
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
-    }
+    result = makeTransferResult(
+        classifyBulkTransferResult(transferResult),
+        transferResult,
+        transferredBytes,
+        length
+    );
 
     return result;
 }
@@ -465,7 +520,8 @@ SUsbTransferResult bulkRead(
     uint8_t *buffer,
     const int length,
     const unsigned int timeoutMs,
-    const unsigned int attempts
+    const unsigned int attempts,
+    const int minimumLength
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
     int transferResult = LIBUSB_ERROR_TIMEOUT;
@@ -487,11 +543,12 @@ SUsbTransferResult bulkRead(
         );
     }
 
-    result.transferredBytes = transferredBytes;
-    result.status = classifyBulkTransferResult(transferResult);
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
-    }
+    result = makeTransferResult(
+        classifyBulkTransferResult(transferResult),
+        transferResult,
+        transferredBytes,
+        minimumLength
+    );
 
     return result;
 }
@@ -529,11 +586,12 @@ SUsbTransferResult controlWrite(
         );
     }
 
-    result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
-    result.status = classifyControlTransferResult(transferResult);
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
-    }
+    result = makeTransferResult(
+        classifyControlTransferResult(transferResult),
+        transferResult,
+        (transferResult >= 0) ? transferResult : 0,
+        static_cast<int>(length)
+    );
 
     return result;
 }
@@ -547,7 +605,8 @@ SUsbTransferResult controlRead(
     const uint16_t value,
     const uint16_t index,
     const unsigned int timeoutMs,
-    const unsigned int attempts
+    const unsigned int attempts,
+    const uint16_t minimumLength
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
     int transferResult = LIBUSB_ERROR_TIMEOUT;
@@ -571,11 +630,12 @@ SUsbTransferResult controlRead(
         );
     }
 
-    result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
-    result.status = classifyControlTransferResult(transferResult);
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        result.errorMessage = libusb_error_name(transferResult);
-    }
+    result = makeTransferResult(
+        classifyControlTransferResult(transferResult),
+        transferResult,
+        (transferResult >= 0) ? transferResult : 0,
+        static_cast<int>(minimumLength)
+    );
 
     return result;
 }
@@ -746,6 +806,34 @@ static EUsbTransferStatus classifyControlTransferResult(
     }
     else if (transferResult == LIBUSB_ERROR_NO_DEVICE) {
         result = EUsbTransferStatus::eNoDevice;
+    }
+
+    return result;
+}
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn makeTransferResult */
+static SUsbTransferResult makeTransferResult(
+    const EUsbTransferStatus status,
+    const int transferResult,
+    const int transferredBytes,
+    const int minimumLength
+) {
+    SUsbTransferResult result = {status, transferredBytes, ""};
+
+    if (
+        (result.status == EUsbTransferStatus::eSuccess) &&
+        (result.transferredBytes < minimumLength)
+    ) {
+        result.status = EUsbTransferStatus::eShortTransfer;
+    }
+
+    if (result.status == EUsbTransferStatus::eShortTransfer) {
+        result.errorMessage = "short transfer";
+    }
+    else if (result.status != EUsbTransferStatus::eSuccess) {
+        result.errorMessage = libusb_error_name(transferResult);
     }
 
     return result;
