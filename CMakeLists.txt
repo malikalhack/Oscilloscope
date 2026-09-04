@@ -24,6 +24,14 @@ pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
 
 set(APP_NAME run)
 
+function(enable_project_warnings target_name)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target_name} PRIVATE
+            -Wall -Wextra -Wpedantic
+        )
+    endif()
+endfunction()
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -35,7 +43,8 @@ set(SOURCES_LIST
     app/main.cpp
     usb/src/usb_device.cpp
     usb/src/firmware_loader.cpp
-    capture/acquisition_loop.cpp
+    capture/src/acquisition_loop.cpp
+    capture/src/raw_packet_queue.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -47,7 +56,8 @@ set(SOURCES_LIST
 set(HEADERS_LIST
     usb/inc/usb_device.h
     usb/inc/firmware_loader.h
-    capture/acquisition_loop.h
+    capture/inc/acquisition_loop.h
+    capture/inc/raw_packet_queue.h
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -76,7 +86,7 @@ add_custom_command(
 target_include_directories(${APP_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/capture
+    ${CMAKE_CURRENT_SOURCE_DIR}/capture/inc
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )
@@ -88,7 +98,20 @@ target_link_libraries(${APP_NAME} PRIVATE
     Threads::Threads
 )
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(${APP_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+enable_project_warnings(${APP_NAME})
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(raw_packet_queue_tests
+        tests/raw_packet_queue_test.cpp
+        capture/src/raw_packet_queue.cpp
+    )
+    target_include_directories(raw_packet_queue_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/capture/inc
+    )
+    target_link_libraries(raw_packet_queue_tests PRIVATE Threads::Threads)
+    enable_project_warnings(raw_packet_queue_tests)
+    add_test(NAME raw_packet_queue COMMAND raw_packet_queue_tests)
 endif()
 

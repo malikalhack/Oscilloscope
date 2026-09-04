@@ -67,6 +67,12 @@ static void pollCaptureState(
 );
 
 /**
+ * @brief Consumes queued USB responses without blocking the USB producer
+ * @param[in,out] loop Loop control block containing the queue and status
+ */
+static void processRawPackets(SAcquisitionLoop *loop);
+
+/**
  * @brief Executes one complete capture-state polling transaction
  * @param[in] connection USB connection to poll
  * @param[out] response Buffer receiving the capture-state response
@@ -99,12 +105,15 @@ void startAcquisitionLoop(
 ) {
     if (loop != NULL) {
         loop->stopRequested.store(false);
+        loop->rawPacketQueue.reset();
         loop->status.lastCaptureState.store(-1);
+        loop->status.droppedPacketCount.store(0U);
         loop->status.state.store(EAcquisitionState::eRunning);
         loop->status.failedOperation.store(EAcquisitionOperation::eNone);
         loop->status.lastTransferStatus.store(
             usb::EUsbTransferStatus::eSuccess
         );
+        loop->processingThread = std::thread(processRawPackets, loop);
         loop->workerThread = std::thread(pollCaptureState, loop, connection);
     }
 }
@@ -123,6 +132,10 @@ bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop) {
             if (loop->workerThread.joinable()) {
                 loop->workerThread.join();
             }
+            loop->rawPacketQueue.close();
+            if (loop->processingThread.joinable()) {
+                loop->processingThread.join();
+            }
             joined = true;
         }
     }
@@ -134,8 +147,12 @@ bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop) {
 void stopAcquisitionLoop(SAcquisitionLoop *loop) {
     if (loop != NULL) {
         loop->stopRequested.store(true);
+        loop->rawPacketQueue.close();
         if (loop->workerThread.joinable()) {
             loop->workerThread.join();
+        }
+        if (loop->processingThread.joinable()) {
+            loop->processingThread.join();
         }
         loop->status.state.store(EAcquisitionState::eStopped);
     }
@@ -162,7 +179,13 @@ static void pollCaptureState(
         );
 
         if (transferResult.status == usb::EUsbTransferStatus::eSuccess) {
-            loop->status.lastCaptureState.store(static_cast<int>(response[0]));
+            loop->rawPacketQueue.push(
+                response,
+                static_cast<size_t>(transferResult.transferredBytes)
+            );
+            loop->status.droppedPacketCount.store(
+                loop->rawPacketQueue.getDroppedPacketCount()
+            );
             loop->status.state.store(EAcquisitionState::eRunning);
             loop->status.failedOperation.store(EAcquisitionOperation::eNone);
             loop->status.lastTransferStatus.store(
@@ -191,6 +214,23 @@ static void pollCaptureState(
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    }
+
+    loop->rawPacketQueue.close();
+}
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn processRawPackets */
+static void processRawPackets(SAcquisitionLoop *loop) {
+    SRawUsbPacket packet;
+
+    while (loop->rawPacketQueue.waitPop(&packet)) {
+        if (packet.validLength > 0U) {
+            loop->status.lastCaptureState.store(
+                static_cast<int>(packet.payload[0])
+            );
+        }
     }
 }
 

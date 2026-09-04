@@ -1,44 +1,24 @@
 # Oscilloscope
 
-New cross-platform USB oscilloscope client developed without Qt. The primary
-target platforms are Linux Mint, Ubuntu, and Debian, with a future Windows
-build supported through CMake.
-
-The initial target device is the Hantek DSO-2250 USB oscilloscope. The
-`OldQtCode` directory contains the historical Qt4/KDE4 implementation and is
-used only as a reference for protocol details and algorithms. The new codebase
-is developed independently and has no Qt dependency.
+Modern cross-platform client for Hantek USB oscilloscopes. Linux Mint and
+Ubuntu are the primary development and testing platforms; compatibility with
+Windows 10 and 11 is planned through the portable CMake-based architecture.
 
 ## Status
 
 Current version: `0.2.5`.
 
-The current iteration provides a working USB connection and endpoint polling
-path for the Hantek DSO-2250:
+The application currently provides:
 
-- CMake build configuration for C++14;
-- `Debug` and `Release` build targets;
-- a Makefile and Bash build script for Linux;
-- an SDL2 window with an OpenGL 3 context;
-- Dear ImGui integration, a menu, control panel, status line, and display grid;
-- a pinned Dear ImGui source dependency (`v1.90.9`) fetched by CMake;
-- discovery and connection through libusb;
+- an SDL2, Dear ImGui, and OpenGL user interface;
+- Demo and Live operating modes;
+- Hantek DSO-2250 discovery and connection through libusb;
 - FX2 firmware upload and operational-device re-enumeration;
-- a Start/Stop-controlled acquisition thread that polls the bulk endpoints;
-- bounded recovery from USB timeouts and I/O errors;
-- safe acquisition shutdown and status reporting when the device is lost.
+- Start/Stop-controlled endpoint polling;
+- bounded USB error recovery and safe device-loss handling.
 
-The application starts in Live mode when a supported device is present and in
-Demo mode otherwise. Connecting prepares the device; endpoint traffic begins
-only after pressing Start and stops after pressing Stop. Transient USB errors
-are retried with a bounded delay. Repeated errors stop acquisition while
-keeping an available device connected for another Start attempt. Disconnecting
-the device during acquisition stops the worker before USB resources are
-released and reports the device loss in the status line. Outside acquisition,
-the application periodically checks device presence: unplugging a connected
-device closes the stale connection, and plugging it back in updates the status
-automatically. The disconnect status remains visible while the device is
-absent. Reconnecting remains an explicit action.
+Waveform reads, sample decoding, and live waveform rendering are not yet
+implemented.
 
 ## Planned Stack
 
@@ -55,8 +35,11 @@ absent. Reconnecting remains an explicit action.
 Oscilloscope/
 ├── app/            Application entry point.
 ├── capture/        Sample acquisition and processing.
+│   ├── inc/        Capture module headers.
+│   └── src/        Capture module implementations.
 ├── core/           Shared types and application logic.
 ├── docs/           Project documentation.
+├── firmware/       Default path for local device firmware files.
 ├── render/         Oscilloscope waveform rendering.
 ├── tools/          Optional firmware extraction utilities.
 ├── ui/             User interface.
@@ -64,7 +47,6 @@ Oscilloscope/
 │   ├── inc/        USB module headers.
 │   └── src/        USB module implementations.
 ├── WorkingDocs/    Technical specification and device documentation.
-├── OldQtCode/      Historical Qt4/KDE4 reference implementation.
 ├── CMakeLists.txt  CMake build configuration.
 ├── Makefile        Make build entry points.
 └── linux_build.sh  Linux build script.
@@ -224,9 +206,8 @@ CI can update only the version metadata by passing `--skip-build`.
 ## Next Steps
 
 1. Decode capture-state responses and acquired sample packets.
-2. Add buffering between USB acquisition and waveform processing.
-3. Render live and demo waveforms on the display grid.
-4. Implement the two-channel model, timebase, and instrument controls.
+2. Render live and demo waveforms on the display grid.
+3. Implement the two-channel model, timebase, and instrument controls.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.

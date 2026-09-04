@@ -27,6 +27,7 @@
 #include <atomic>
 #include <thread>
 
+#include "raw_packet_queue.h"
 #include "usb_device.h"
 
 /********************************* Definitions ********************************/
@@ -56,6 +57,7 @@ enum class EAcquisitionOperation {
 /** @brief Acquisition state safe to read from any thread */
 struct SAcquisitionStatus {
     std::atomic<int> lastCaptureState{-1};       /**< Last raw capture state */
+    std::atomic<size_t> droppedPacketCount{0U};  /**< Queue overflow count */
     std::atomic<EAcquisitionState> state{
         EAcquisitionState::eStopped
     }; /**< Current worker state */
@@ -69,9 +71,11 @@ struct SAcquisitionStatus {
 
 /** @brief Owns the background polling thread and its shared status */
 struct SAcquisitionLoop {
-    std::thread workerThread;                 /**< Background polling thread */
-    std::atomic<bool> stopRequested{false};   /**< Set to request a stop */
-    SAcquisitionStatus status;                /**< Shared poll status */
+    std::thread workerThread;               /**< Background USB producer */
+    std::thread processingThread;           /**< Background packet consumer */
+    RawPacketQueue rawPacketQueue{8U};      /**< Bounded raw response FIFO */
+    std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
+    SAcquisitionStatus status;              /**< Shared poll status */
 };
 
 /********************* Application Programming Interface *********************/
