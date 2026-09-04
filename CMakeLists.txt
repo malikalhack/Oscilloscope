@@ -64,6 +64,15 @@ endif()
 
 add_executable(${APP_NAME} ${SOURCES_LIST})
 
+add_custom_command(
+    TARGET ${APP_NAME}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/oscilloscope.bmp
+        $<TARGET_FILE_DIR:${APP_NAME}>/oscilloscope.bmp
+    VERBATIM
+)
+
 target_include_directories(${APP_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${imgui_SOURCE_DIR}

@@ -129,6 +129,10 @@ static void updateDemoMode(
 /********************* Application Programming Interface *********************/
 
 int main (void) {
+    char *basePath = NULL;
+    SDL_Surface *windowIcon = NULL;
+    std::string iconPath;
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         fprintf(stderr, "SDL initialization failed: %s\n", SDL_GetError());
         return 1;
@@ -154,6 +158,20 @@ int main (void) {
         fprintf(stderr, "Window creation failed: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
+    }
+
+    basePath = SDL_GetBasePath();
+    if (basePath != NULL) {
+        iconPath = std::string(basePath) + "oscilloscope.bmp";
+        SDL_free(basePath);
+        windowIcon = SDL_LoadBMP(iconPath.c_str());
+        if (windowIcon != NULL) {
+            SDL_SetWindowIcon(window, windowIcon);
+            SDL_FreeSurface(windowIcon);
+        }
+        else {
+            fprintf(stderr, "Window icon loading failed: %s\n", SDL_GetError());
+        }
     }
 
     SDL_GLContext glContext = SDL_GL_CreateContext(window);
