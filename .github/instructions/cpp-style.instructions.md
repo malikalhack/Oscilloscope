@@ -92,10 +92,13 @@ Every public or non-obvious `#define` gets a Doxygen block; align related values
 
 ## Functions
 
-One-line `/** @fn name */` immediately before the **definition**. K&R brace
-(opening brace on the signature line). If a condition does not fit on one line,
-put the first sub-expression on the next line, align sub-expressions, and place
-the closing parenthesis with the opening brace on their own line:
+One-line `/** @fn name */` immediately before a free-function **definition**.
+For a class member definition, use its qualified declaration, for example
+`/** @fn bool ClassName::method(int value) */`, so Doxygen resolves the member.
+Use a K&R brace (opening brace on the signature line). If a condition does not
+fit on one line, put the first sub-expression on the next line, align
+sub-expressions, and place the closing parenthesis with the opening brace on
+their own lines:
 
 ```c
 /** @fn acroAddTask */

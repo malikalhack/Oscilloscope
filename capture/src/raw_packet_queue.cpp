@@ -32,7 +32,7 @@ namespace capture {
 
 /********************* Application Programming Interface *********************/
 
-/** @fn RawPacketQueue */
+/** @fn RawPacketQueue::RawPacketQueue(size_t capacity) */
 RawPacketQueue::RawPacketQueue(const size_t capacity) :
     packets(capacity),
     readIndex(0U),
@@ -44,7 +44,7 @@ RawPacketQueue::RawPacketQueue(const size_t capacity) :
 
 /*----------------------------------------------------------------------------*/
 
-/** @fn push */
+/** @fn bool RawPacketQueue::push(const uint8_t *data, size_t length) */
 bool RawPacketQueue::push(const uint8_t *data, const size_t length) {
     bool accepted = false;
     std::lock_guard<std::mutex> lock(mutex);
@@ -75,7 +75,7 @@ bool RawPacketQueue::push(const uint8_t *data, const size_t length) {
 
 /*----------------------------------------------------------------------------*/
 
-/** @fn waitPop */
+/** @fn bool RawPacketQueue::waitPop(SRawUsbPacket *packet) */
 bool RawPacketQueue::waitPop(SRawUsbPacket *packet) {
     bool packetReturned = false;
     std::unique_lock<std::mutex> lock(mutex);
@@ -96,7 +96,7 @@ bool RawPacketQueue::waitPop(SRawUsbPacket *packet) {
 
 /*----------------------------------------------------------------------------*/
 
-/** @fn close */
+/** @fn void RawPacketQueue::close() */
 void RawPacketQueue::close() {
     std::lock_guard<std::mutex> lock(mutex);
 
@@ -106,7 +106,7 @@ void RawPacketQueue::close() {
 
 /*----------------------------------------------------------------------------*/
 
-/** @fn reset */
+/** @fn void RawPacketQueue::reset() */
 void RawPacketQueue::reset() {
     std::lock_guard<std::mutex> lock(mutex);
 
@@ -119,7 +119,7 @@ void RawPacketQueue::reset() {
 
 /*----------------------------------------------------------------------------*/
 
-/** @fn getDroppedPacketCount */
+/** @fn size_t RawPacketQueue::getDroppedPacketCount() const */
 size_t RawPacketQueue::getDroppedPacketCount() const {
     size_t result = 0U;
     std::lock_guard<std::mutex> lock(mutex);
