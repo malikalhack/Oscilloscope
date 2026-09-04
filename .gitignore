@@ -30,6 +30,7 @@ OldQtCode/
 WorkingDocs
 **/imgui.ini
 
-# Extracted proprietary FX2 firmware
-firmware/
+# Extracted FX2 firmware (redistribution rights are not established)
+firmware/*
+!firmware/.gitkeep
 

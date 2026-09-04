@@ -49,6 +49,7 @@ Oscilloscope/
 ├── core/           Shared types and application logic.
 ├── docs/           Project documentation.
 ├── render/         Oscilloscope waveform rendering.
+├── tools/          Optional firmware extraction utilities.
 ├── ui/             User interface.
 ├── usb/            USB device communication.
 ├── WorkingDocs/    Technical specification and device documentation.
@@ -69,12 +70,14 @@ The current application requires:
 - OpenGL development files.
 - libusb-1.0 development files.
 - `fxload` for uploading the RAM-resident FX2 firmware.
+- binutils development files for building the optional firmware extractor.
 
 On Debian, Ubuntu, and Linux Mint:
 
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential cmake make pkg-config libsdl2-dev libgl1-mesa-dev libusb-1.0-0-dev fxload
+sudo apt-get install build-essential cmake make pkg-config libsdl2-dev \
+	libgl1-mesa-dev libusb-1.0-0-dev fxload binutils-dev
 ```
 
 Dear ImGui is downloaded automatically by CMake during configuration.
@@ -94,8 +97,10 @@ sudo udevadm trigger
 
 ### Hantek DSO-2250 Firmware
 
-The FX2 firmware is proprietary and is not stored in this repository. Supply
-the extracted files at these default paths:
+The official installer states that unauthorized reproduction or distribution
+of the program, or any portion of it, is prohibited. Because separate firmware
+redistribution rights have not been established, the extracted firmware is not
+stored in this repository. Supply the files at these default paths:
 
 ```text
 firmware/DSO2250_loader.hex
@@ -105,6 +110,21 @@ firmware/DSO2250_firmware.hex
 Set `OSCILLOSCOPE_FIRMWARE_DIR` to use another directory. On Connect, the
 application uploads the firmware to a `04b4:2250` device with `fxload`, waits
 for it to re-enumerate as `04b5:2250`, and then opens the operational device.
+
+The repository provides a repaired extractor for users who have the official
+32-bit Windows driver. Locate `Dso2250x861.sys` in the extracted driver package,
+then run:
+
+```bash
+mkdir -p firmware Output
+cc -std=c11 -Wall -Wextra -Wpedantic tools/dsoextractfw.c \
+	-o Output/dsoextractfw -lbfd
+./Output/dsoextractfw /path/to/Dso2250x861.sys firmware
+```
+
+The utility validates record sizes, Intel HEX record types, and EOF records,
+and calculates checksums while writing `DSO2250_firmware.hex` and
+`DSO2250_loader.hex`.
 
 ## Build
 

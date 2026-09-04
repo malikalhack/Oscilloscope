@@ -51,8 +51,10 @@ multiple identical instruments to be distinguished.
 An uninitialized DSO-2250 appears as `04b4:2250`. The application uploads the
 externally supplied FX2 firmware, waits for the instrument to re-enumerate as
 `04b5:2250`, and opens its bulk endpoints on interface 0, alternate setting 0.
-The firmware files are proprietary and intentionally excluded from the
-repository.
+The official installer prohibits unauthorized redistribution, so the firmware
+is excluded until separate redistribution rights can be confirmed. A repaired
+extractor in `tools/dsoextractfw.c` allows owners to generate the required HEX
+files from their copy of the official `Dso2250x861.sys` driver.
 
 Pressing Connect prepares the USB device without starting acquisition. Pressing
 Start launches a background loop that sends the capture-state command through

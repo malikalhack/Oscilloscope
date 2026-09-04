@@ -110,9 +110,10 @@ Records key decisions, structural changes, and completed development stages.
   automatically) versus no blinking on Linux with the current codebase (no
   firmware upload step exists yet, and no `.hex` firmware files are present
   in this repository).
-- The firmware `.hex` files are not included in this repository (proprietary,
-  extracted from the official Windows driver); they must be supplied
-  separately before the USB layer can work end-to-end.
+- The firmware `.hex` files are not included because the official installer
+  prohibits unauthorized redistribution; they must be extracted from a
+  user's copy of the official Windows driver before the USB layer can work
+  end-to-end.
 
 ### Next USB tasks
 
@@ -128,7 +129,8 @@ Records key decisions, structural changes, and completed development stages.
 ### Stage 3 - Endpoint read loop complete
 
 - Corrected the extracted DSO-2250 loader and firmware images and verified
-  their Intel HEX checksums; the proprietary files remain excluded from Git.
+  their Intel HEX checksums; the files remain excluded from Git because
+  redistribution rights have not been established.
 - Added support for the operational `04b5:2250` identity alongside the
   `04b4:2250` bootloader identity.
 - Wait for FX2 re-enumeration with bounded polling after firmware upload and
@@ -156,3 +158,16 @@ Records key decisions, structural changes, and completed development stages.
 - Verified successful `B3`, `B2`, bulk OUT, and 512-byte bulk IN transfers.
 - Confirmed the instrument LED lifecycle: red after Connect, green during
   Start/acquisition, red after Stop, and off after Disconnect.
+
+### Firmware extractor repair
+
+- Added a maintained extraction utility under `tools/` for users who possess
+  the official `Dso2250x861.sys` Windows driver.
+- Fixed the historical extractor's unhandled padding byte, which inserted an
+  extra zero and dropped the final data byte in every Intel HEX record.
+- Skip empty 22-byte separator records instead of emitting invalid
+  `:0000000000` lines.
+- Fixed loader range calculation and added validation for record layout, EOF
+  records, and generated checksums.
+- Verified extraction from the official `Dso2250x861.sys` driver end to end;
+  both generated HEX files match the hardware-tested files byte for byte.
