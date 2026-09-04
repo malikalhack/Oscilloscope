@@ -33,8 +33,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 set(SOURCES_LIST
     app/main.cpp
-    usb/usb_device.cpp
-    usb/firmware_loader.cpp
+    usb/src/usb_device.cpp
+    usb/src/firmware_loader.cpp
     capture/acquisition_loop.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -45,8 +45,8 @@ set(SOURCES_LIST
 )
 
 set(HEADERS_LIST
-    usb/usb_device.h
-    usb/firmware_loader.h
+    usb/inc/usb_device.h
+    usb/inc/firmware_loader.h
     capture/acquisition_loop.h
 )
 
@@ -75,6 +75,7 @@ add_custom_command(
 
 target_include_directories(${APP_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/inc
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )

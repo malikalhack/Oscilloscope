@@ -115,15 +115,6 @@ Records key decisions, structural changes, and completed development stages.
   user's copy of the official Windows driver before the USB layer can work
   end-to-end.
 
-### Next USB tasks
-
-- Add a firmware upload step (fxload-equivalent control/bulk transfer) before
-  claiming the interface, sourcing `.hex` files from an external, user-
-  provided location.
-- Read endpoint data chunks in a dedicated acquisition path.
-- Add buffering between USB reads and waveform processing.
-- Handle timeouts, I/O errors, disconnects, and recovery states.
-
 ## 2026-09-04
 
 ### Stage 3 - Endpoint read loop complete
@@ -171,3 +162,16 @@ Records key decisions, structural changes, and completed development stages.
   records, and generated checksums.
 - Verified extraction from the official `Dso2250x861.sys` driver end to end;
   both generated HEX files match the hardware-tested files byte for byte.
+
+### USB module structure
+
+- Moved USB headers to `usb/inc/` and implementations to `usb/src/` after the
+  module grew beyond a single source/header pair.
+- Updated CMake source lists, include directories, and dependent includes for
+  the new layout.
+
+### Next USB tasks
+
+- Decode capture-state responses and acquired sample packets.
+- Add buffering between USB reads and waveform processing.
+- Add automatic recovery for transfer errors and unexpected disconnections.

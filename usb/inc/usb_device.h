@@ -114,7 +114,7 @@ SUsbScanResult enumerateSupportedDevices();
  * @param[out] connection Connection state container that is filled in
  * @returns Connection status and error message when applicable
  * @note Uploads the FX2 firmware first when the device is still in its bare
- *       bootloader state; see `usb/firmware_loader.h`.
+ *       bootloader state; see `usb/inc/firmware_loader.h`.
  */
 SUsbConnectionResult connectToDevice(
     const SUsbDeviceInfo &deviceInfo,

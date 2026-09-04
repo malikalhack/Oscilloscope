@@ -52,6 +52,8 @@ Oscilloscope/
 ├── tools/          Optional firmware extraction utilities.
 ├── ui/             User interface.
 ├── usb/            USB device communication.
+│   ├── inc/        USB module headers.
+│   └── src/        USB module implementations.
 ├── WorkingDocs/    Technical specification and device documentation.
 ├── OldQtCode/      Historical Qt4/KDE4 reference implementation.
 ├── CMakeLists.txt  CMake build configuration.

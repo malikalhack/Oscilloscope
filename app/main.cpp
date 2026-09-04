@@ -73,7 +73,7 @@
 #include <imgui_impl_sdl2.h>
 
 #include "capture/acquisition_loop.h"
-#include "usb/usb_device.h"
+#include "usb_device.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
 using oscilloscope::usb::EScanStatus;
