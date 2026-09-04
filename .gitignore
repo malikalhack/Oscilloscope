@@ -34,3 +34,6 @@ WorkingDocs
 firmware/*
 !firmware/.gitkeep
 
+# Wiki repository
+wiki/
+

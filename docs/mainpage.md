@@ -2,18 +2,15 @@
 
 **Version:** 0.2.5 | **Status:** active development
 
-Cross-platform USB oscilloscope client for Linux Mint, Ubuntu, and Debian.
-The project is written from scratch in C++14 and does not depend on Qt.
+Modern cross-platform client for Hantek USB oscilloscopes. Linux Mint and
+Ubuntu are the primary development and testing platforms; compatibility with
+Windows 10 and 11 is planned through the portable CMake-based architecture.
 
 ## Overview
 
 The initial target device is the Hantek DSO-2250 USB oscilloscope. The
 application uses SDL2, Dear ImGui, and OpenGL for the user interface, and
 libusb for communication with supported instruments.
-
-The `OldQtCode/` directory is retained solely as a historical reference for
-USB protocol research and signal-processing algorithms. It is not a dependency
-of the new implementation.
 
 ## Current functionality
 
@@ -26,20 +23,25 @@ of the new implementation.
 	operational device (`0x04B5:0x2250`);
 - FX2 firmware upload through `fxload` and bounded re-enumeration polling;
 - USB interface claiming and clean connect/disconnect handling;
-- a Start/Stop-controlled acquisition thread;
+- Start/Stop-controlled endpoint polling;
+- bounded buffering between USB reads and packet processing;
 - capture-state polling through vendor control requests and bulk endpoints;
-- successful-poll and transfer-error counters in the status line.
+- bounded USB error recovery and safe device-loss handling.
 
 ## Architecture
 
 | Module | Responsibility |
 | --- | --- |
 | `app/` | Application entry point, event loop, and UI composition |
-| `core/` | Shared application types and state |
-| `usb/` | Device discovery and USB communication |
 | `capture/` | Sample acquisition and buffering |
-| `render/` | Waveform rendering |
-| `ui/` | Reusable interface components |
+| `core/` | Planned shared application types and state |
+| `docs/` | Generated documentation sources |
+| `firmware/` | Default path for local device firmware files |
+| `render/` | Planned waveform rendering |
+| `tests/` | Automated tests run through CTest |
+| `tools/` | Optional firmware extraction utilities |
+| `ui/` | Planned reusable interface components |
+| `usb/` | Device discovery, firmware loading, and USB communication |
 
 ## USB device operation
 
@@ -57,10 +59,11 @@ extractor in `tools/dsoextractfw.c` allows owners to generate the required HEX
 files from their copy of the official `Dso2250x861.sys` driver.
 
 Pressing Connect prepares the USB device without starting acquisition. Pressing
-Start launches a background loop that sends the capture-state command through
-bulk endpoint `0x02` and reads a 512-byte response from endpoint `0x86`, with
-the required `B3` and `B2` vendor requests. Stop terminates and joins the loop
-before the connection can be released.
+Start launches a USB producer that sends the capture-state command through bulk
+endpoint `0x02` and reads a 512-byte response from endpoint `0x86`, with the
+required `B3` and `B2` vendor requests. Successful responses enter a bounded
+FIFO and a processing consumer reads them independently. Stop closes the queue,
+wakes the consumer, and joins both threads before releasing the connection.
 
 See `oscilloscope::usb::enumerateSupportedDevices()` for the public discovery
 API.
@@ -73,8 +76,7 @@ complete installation, build, and run instructions.
 
 ## Planned work
 
-The next tasks are decoding capture responses and sample packets, buffering
-data between acquisition and rendering, and displaying live waveforms.
-Instrument controls, broader recovery behavior, and persistent configuration
-follow in later milestones.
+The next tasks are decoding capture responses and sample packets, reading
+waveform data, and displaying live waveforms. Instrument controls, broader
+recovery behavior, and persistent configuration follow in later milestones.
 

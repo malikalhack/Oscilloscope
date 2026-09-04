@@ -92,10 +92,13 @@ Every public or non-obvious `#define` gets a Doxygen block; align related values
 
 ## Functions
 
-One-line `/** @fn name */` immediately before the **definition**. K&R brace
-(opening brace on the signature line). If a condition does not fit on one line,
-put the first sub-expression on the next line, align sub-expressions, and place
-the closing parenthesis with the opening brace on their own line:
+One-line `/** @fn name */` immediately before a free-function **definition**.
+For a class member definition, use its qualified declaration, for example
+`/** @fn bool ClassName::method(int value) */`, so Doxygen resolves the member.
+Use a K&R brace (opening brace on the signature line). If a condition does not
+fit on one line, put the first sub-expression on the next line, align
+sub-expressions, and place the closing parenthesis with the opening brace on
+their own lines:
 
 ```c
 /** @fn acroAddTask */
@@ -180,6 +183,14 @@ Always put the macro name in the closing comment:
 ## Preferences
 
 Prefer a `switch` statement over a long `if`/`else if` chain.
+
+Follow DRY: do not duplicate implementation logic. Reuse an existing helper or
+abstraction when suitable; otherwise extract the smallest clearly named shared
+helper that removes meaningful repetition.
+
+Follow KISS: prefer the simplest design that fully satisfies the current
+requirements. Do not add layers, generic abstractions, configuration, or
+extension points without a concrete present need.
 
 ## Doxygen API documentation
 

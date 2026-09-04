@@ -210,9 +210,39 @@ Records key decisions, structural changes, and completed development stages.
   shows the enumerated bootloader's model name, which correctly reflects the
   unprogrammed device.
 
+### Stage 3 - Raw USB buffer management
+
+- Added a fixed-capacity FIFO between USB reads and packet processing.
+- Store each raw response with its actual transferred length and support the
+  largest known two-channel DSO-2250 capture without allocation in the active
+  acquisition loop.
+- Keep the USB producer non-blocking by discarding the oldest queued response
+  when processing falls behind, with a thread-safe dropped-packet count.
+- Added a processing consumer that preserves the existing capture-state update
+  while decoupling it from the USB polling thread.
+- Close the queue and wake the consumer during Stop and terminal USB errors;
+  join both workers before releasing USB resources.
+- Added deterministic CTest coverage for FIFO order, response length, overflow,
+  close/reset behavior, and concurrent producer-consumer operation.
+- Moved the expanded capture module into `capture/inc/` and `capture/src/`.
+
+### Hardware verification
+
+- Verified a 60-second acquisition run and 11 repeated Start/Stop cycles on a
+  physical Hantek DSO-2250 without GUI stalls or loss of the USB connection.
+- Confirmed the expected LED lifecycle: red while connected and stopped, green
+  during acquisition, and off after application shutdown.
+- Verified active USB removal: acquisition stopped without a hang and reported
+  `USB device lost while beginning command`.
+- Verified automatic device rediscovery, explicit reconnection, and successful
+  acquisition after reconnecting the instrument.
+- Verified application shutdown during acquisition without a crash, deadlock,
+  or unbounded wait.
+- No persistent recovery state or unexpected acquisition stop occurred during
+  normal operation; the Release build and FIFO test passed without warnings.
+
 ### Next USB tasks
 
 - Decode capture-state responses and acquired sample packets.
-- Add buffering between USB reads and waveform processing.
 - Add deterministic fault-injection tests for timeout and transfer-error
   recovery, then verify recovery with a connected physical device.
