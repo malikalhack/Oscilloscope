@@ -87,6 +87,9 @@ using oscilloscope::usb::SUsbScanResult;
 
 /***************************** Private variables *****************************/
 
+/** @brief Interval between USB presence checks outside acquisition */
+static const uint32_t USB_PRESENCE_INTERVAL_MS = 1000U;
+
 #ifdef __GNUC__  // GCC/MinGW only
 const char version_info[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
@@ -215,6 +218,8 @@ int main (void) {
         usbScanResult,
         usbConnection
     );
+    uint32_t nextUsbPresenceCheck =
+        SDL_GetTicks() + USB_PRESENCE_INTERVAL_MS;
     const char* timebases[] = {
         "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
         "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
@@ -260,6 +265,32 @@ int main (void) {
             }
             else {
                 deviceStatus = "Acquisition stopped: " + acquisitionError;
+            }
+        }
+
+        const uint32_t currentTicks = SDL_GetTicks();
+        if (
+            !demoMode &&
+            !acquisitionRunning &&
+            (static_cast<int32_t>(currentTicks - nextUsbPresenceCheck) >= 0)
+        ) {
+            usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
+            nextUsbPresenceCheck =
+                currentTicks + USB_PRESENCE_INTERVAL_MS;
+
+            if (
+                usbConnection.isConnected &&
+                !isUsbDevicePresent(usbScanResult, connectedDevice)
+            ) {
+                oscilloscope::usb::disconnectFromDevice(&usbConnection);
+                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceStatus = "Device disconnected";
+            }
+            else if (!usbConnection.isConnected) {
+                deviceStatus = formatUsbConnectionStatus(
+                    usbScanResult,
+                    usbConnection
+                );
             }
         }
 
@@ -424,11 +455,24 @@ int main (void) {
                     );
 
                 if (connectResult.errorMessage.empty()) {
-                    connectedDevice = usbScanResult.devices.front();
-                    deviceStatus = formatUsbConnectionStatus(
-                        usbScanResult,
-                        usbConnection
-                    );
+                    if (
+                        oscilloscope::usb::getConnectedDeviceInfo(
+                            usbConnection,
+                            &connectedDevice
+                        )
+                    ) {
+                        deviceStatus = formatUsbConnectionStatus(
+                            usbScanResult,
+                            usbConnection
+                        );
+                    }
+                    else {
+                        oscilloscope::usb::disconnectFromDevice(
+                            &usbConnection
+                        );
+                        deviceStatus =
+                            "Connect error: Cannot identify USB device";
+                    }
                 }
                 else {
                     deviceStatus = formatUsbConnectionError(
