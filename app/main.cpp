@@ -342,6 +342,10 @@ int main (void) {
                         &acquisitionLoop,
                         usbConnection
                     );
+                    deviceStatus = formatUsbConnectionStatus(
+                        usbScanResult,
+                        usbConnection
+                    );
                 }
                 acquisitionRunning = true;
             }
