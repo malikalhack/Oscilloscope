@@ -177,6 +177,10 @@ Always put the macro name in the closing comment:
 #endif /* SOME_OPTION */
 ```
 
+## Preferences
+
+Prefer a `switch` statement over a long `if`/`else if` chain.
+
 ## Doxygen API documentation
 
 Public **declarations** (in `.h`) carry a full Doxygen block; **definitions**

@@ -88,8 +88,90 @@ Records key decisions, structural changes, and completed development stages.
 - Added a Linux udev rule for non-root DSO-2250 access through libusb.
 - Verified the connect/disconnect lifecycle with a connected Hantek DSO-2250.
 
+## 2026-09-02
+
+### Research - FX2 firmware upload requirement
+
+- Investigated the old code for a host "presence ping" that would explain the
+  DSO-2250 status LED behavior (red blink on USB link, green blink on host
+  activity, long red+green during data bursts).
+- Found no dedicated ping command: `HantekDSOAThread::run()` in
+  `OldQtCode/src/hantekdsoathread.cpp` polls `dsoGetCaptureState` in a loop
+  with a `msleep(timeBase)` delay; the repeated bulk transaction itself is
+  what the firmware reports as host activity.
+- Found that the DSO-2250 uses a Cypress EZ-USB FX2 chip with RAM-resident
+  firmware. `OldQtCode/dsoextractfw/HantekDSO.rules` uploads
+  `DSO2250_firmware.hex` and `DSO2250_loader.hex` through `fxload` on every
+  USB "add" event; `OldQtCode/dsoextractfw/dsoextractfw.c` extracts those hex
+  files from the official Windows driver (`1.SYS`).
+- Until firmware is uploaded, the device stays in a bare bootloader state:
+  no status LED activity and no working bulk endpoints. This explains the
+  LED blinking seen on Windows (official driver uploads firmware
+  automatically) versus no blinking on Linux with the current codebase (no
+  firmware upload step exists yet, and no `.hex` firmware files are present
+  in this repository).
+- The firmware `.hex` files are not included because the official installer
+  prohibits unauthorized redistribution; they must be extracted from a
+  user's copy of the official Windows driver before the USB layer can work
+  end-to-end.
+
+## 2026-09-04
+
+### Stage 3 - Endpoint read loop complete
+
+- Corrected the extracted DSO-2250 loader and firmware images and verified
+  their Intel HEX checksums; the files remain excluded from Git because
+  redistribution rights have not been established.
+- Added support for the operational `04b5:2250` identity alongside the
+  `04b4:2250` bootloader identity.
+- Wait for FX2 re-enumeration with bounded polling after firmware upload and
+  reconnect to the operational device on interface 0, alternate setting 0.
+- Extended the supplied udev rule to grant access to both USB identities.
+- Added vendor control-transfer helpers and the DSO-2250 initialization
+  sequence required before endpoint polling.
+- Implemented a dedicated acquisition thread that sends the capture-state
+  request to bulk endpoint `0x02` and reads 512-byte responses from endpoint
+  `0x86`.
+- Added successful-poll, transfer-error, and last-capture-state tracking with
+  thread-safe counters.
+- Made endpoint activity follow the Start/Stop lifecycle instead of beginning
+  at Connect; Stop, Disconnect, mode changes, application shutdown, and device
+  loss stop and join the acquisition thread before releasing USB resources.
+- Disabled Start until a live device is connected and disabled device rescans
+  while a connection is active.
+- Select Live mode at startup when a supported device is present, otherwise
+  retain Demo mode.
+
+### Hardware verification
+
+- Verified firmware re-enumeration from `04b4:2250` to `04b5:2250` on a
+  physical Hantek DSO-2250.
+- Verified successful `B3`, `B2`, bulk OUT, and 512-byte bulk IN transfers.
+- Confirmed the instrument LED lifecycle: red after Connect, green during
+  Start/acquisition, red after Stop, and off after Disconnect.
+
+### Firmware extractor repair
+
+- Added a maintained extraction utility under `tools/` for users who possess
+  the official `Dso2250x861.sys` Windows driver.
+- Fixed the historical extractor's unhandled padding byte, which inserted an
+  extra zero and dropped the final data byte in every Intel HEX record.
+- Skip empty 22-byte separator records instead of emitting invalid
+  `:0000000000` lines.
+- Fixed loader range calculation and added validation for record layout, EOF
+  records, and generated checksums.
+- Verified extraction from the official `Dso2250x861.sys` driver end to end;
+  both generated HEX files match the hardware-tested files byte for byte.
+
+### USB module structure
+
+- Moved USB headers to `usb/inc/` and implementations to `usb/src/` after the
+  module grew beyond a single source/header pair.
+- Updated CMake source lists, include directories, and dependent includes for
+  the new layout.
+
 ### Next USB tasks
 
-- Read endpoint data chunks in a dedicated acquisition path.
+- Decode capture-state responses and acquired sample packets.
 - Add buffering between USB reads and waveform processing.
-- Handle timeouts, I/O errors, disconnects, and recovery states.
+- Add automatic recovery for transfer errors and unexpected disconnections.

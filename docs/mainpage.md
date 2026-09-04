@@ -22,8 +22,13 @@ of the new implementation.
 - display grid, control panel, menu bar, and status line;
 - Demo and Live modes;
 - supported-device enumeration through libusb;
-- detection of all connected Hantek DSO-2250 instruments (`0x04B4:0x2250`);
-- manual USB rescan and automatic scan when entering Live mode.
+- detection of the Hantek DSO-2250 bootloader (`0x04B4:0x2250`) and
+	operational device (`0x04B5:0x2250`);
+- FX2 firmware upload through `fxload` and bounded re-enumeration polling;
+- USB interface claiming and clean connect/disconnect handling;
+- a Start/Stop-controlled acquisition thread;
+- capture-state polling through vendor control requests and bulk endpoints;
+- successful-poll and transfer-error counters in the status line.
 
 ## Architecture
 
@@ -36,12 +41,26 @@ of the new implementation.
 | `render/` | Waveform rendering |
 | `ui/` | Reusable interface components |
 
-## USB device discovery
+## USB device operation
 
 The USB module enumerates the full libusb device list and compares every
 descriptor against its central table of supported VID/PID pairs. Each match is
 reported with its model name, VID/PID, bus number, and address, allowing
 multiple identical instruments to be distinguished.
+
+An uninitialized DSO-2250 appears as `04b4:2250`. The application uploads the
+externally supplied FX2 firmware, waits for the instrument to re-enumerate as
+`04b5:2250`, and opens its bulk endpoints on interface 0, alternate setting 0.
+The official installer prohibits unauthorized redistribution, so the firmware
+is excluded until separate redistribution rights can be confirmed. A repaired
+extractor in `tools/dsoextractfw.c` allows owners to generate the required HEX
+files from their copy of the official `Dso2250x861.sys` driver.
+
+Pressing Connect prepares the USB device without starting acquisition. Pressing
+Start launches a background loop that sends the capture-state command through
+bulk endpoint `0x02` and reads a 512-byte response from endpoint `0x86`, with
+the required `B3` and `B2` vendor requests. Stop terminates and joins the loop
+before the connection can be released.
 
 See `oscilloscope::usb::enumerateSupportedDevices()` for the public discovery
 API.
@@ -54,7 +73,8 @@ complete installation, build, and run instructions.
 
 ## Planned work
 
-The next USB tasks are device connection, interface claiming, endpoint reads,
-buffering, and recovery from I/O errors or disconnects. Waveform processing,
-instrument controls, and persistent configuration follow in later milestones.
+The next tasks are decoding capture responses and sample packets, buffering
+data between acquisition and rendering, and displaying live waveforms.
+Instrument controls, broader recovery behavior, and persistent configuration
+follow in later milestones.
 

@@ -19,6 +19,7 @@ FetchContent_MakeAvailable(imgui)
 find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
 
 set(APP_NAME run)
@@ -32,7 +33,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 set(SOURCES_LIST
     app/main.cpp
-    usb/usb_device.cpp
+    usb/src/usb_device.cpp
+    usb/src/firmware_loader.cpp
+    capture/acquisition_loop.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -42,7 +45,9 @@ set(SOURCES_LIST
 )
 
 set(HEADERS_LIST
-    usb/usb_device.h
+    usb/inc/usb_device.h
+    usb/inc/firmware_loader.h
+    capture/acquisition_loop.h
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -59,8 +64,18 @@ endif()
 
 add_executable(${APP_NAME} ${SOURCES_LIST})
 
+add_custom_command(
+    TARGET ${APP_NAME}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/oscilloscope.bmp
+        $<TARGET_FILE_DIR:${APP_NAME}>/oscilloscope.bmp
+    VERBATIM
+)
+
 target_include_directories(${APP_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/inc
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )
@@ -69,5 +84,6 @@ target_link_libraries(${APP_NAME} PRIVATE
     SDL2::SDL2
     OpenGL::GL
     PkgConfig::LIBUSB
+    Threads::Threads
 )
 
