@@ -130,6 +130,17 @@ SUsbConnectionResult connectToDevice(
 SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection);
 
 /**
+ * @brief Reads the identity of the device behind an active connection
+ * @param[in] connection Active USB connection
+ * @param[out] deviceInfo Actual device identity after any re-enumeration
+ * @returns True when the connected device identity was read successfully
+ */
+bool getConnectedDeviceInfo(
+    const SUsbConnection &connection,
+    SUsbDeviceInfo *deviceInfo
+);
+
+/**
  * @brief Writes to a bulk OUT endpoint, retrying on timeout
  * @param[in] connection Active connection to write through
  * @param[in] endpointAddress Bulk OUT endpoint address (e.g. 0x02)

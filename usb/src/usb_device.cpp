@@ -435,6 +435,45 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
     return result;
 }
 
+/** @fn getConnectedDeviceInfo */
+bool getConnectedDeviceInfo(
+    const SUsbConnection &connection,
+    SUsbDeviceInfo *deviceInfo
+) {
+    bool result = false;
+    libusb_device *device = NULL;
+    libusb_device_descriptor descriptor;
+    const SSupportedDevice *supportedDevice = NULL;
+    int descriptorResult = LIBUSB_ERROR_INVALID_PARAM;
+
+    if (
+        connection.isConnected &&
+        (connection.handle != NULL) &&
+        (deviceInfo != NULL)
+    ) {
+        device = libusb_get_device(connection.handle);
+        descriptorResult = libusb_get_device_descriptor(device, &descriptor);
+        if (descriptorResult == LIBUSB_SUCCESS) {
+            supportedDevice = findSupportedDevice(
+                descriptor.idVendor,
+                descriptor.idProduct
+            );
+            if (supportedDevice != NULL) {
+                *deviceInfo = {
+                    descriptor.idVendor,
+                    descriptor.idProduct,
+                    libusb_get_bus_number(device),
+                    libusb_get_device_address(device),
+                    supportedDevice->modelName
+                };
+                result = true;
+            }
+        }
+    }
+
+    return result;
+}
+
 /** @fn bulkWrite */
 SUsbTransferResult bulkWrite(
     const SUsbConnection &connection,
