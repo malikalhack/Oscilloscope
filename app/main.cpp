@@ -203,6 +203,7 @@ int main (void) {
 
     bool running = true;
     bool acquisitionRunning = false;
+    bool deviceWasDisconnected = false;
     bool channelEnabled[] = {true, true};
     int timebase = 6;
     int voltsPerDivision[] = {2, 2};
@@ -261,6 +262,7 @@ int main (void) {
             if (acquisitionState == EAcquisitionState::eDeviceLost) {
                 oscilloscope::usb::disconnectFromDevice(&usbConnection);
                 connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceWasDisconnected = true;
                 deviceStatus = "Device disconnected: " + acquisitionError;
             }
             else {
@@ -280,13 +282,22 @@ int main (void) {
 
             if (
                 usbConnection.isConnected &&
+                (usbScanResult.status == EScanStatus::eSuccess) &&
                 !isUsbDevicePresent(usbScanResult, connectedDevice)
             ) {
                 oscilloscope::usb::disconnectFromDevice(&usbConnection);
                 connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceWasDisconnected = true;
                 deviceStatus = "Device disconnected";
             }
-            else if (!usbConnection.isConnected) {
+            else if (
+                !usbConnection.isConnected &&
+                (!usbScanResult.devices.empty() ||
+                 !deviceWasDisconnected)
+            ) {
+                if (!usbScanResult.devices.empty()) {
+                    deviceWasDisconnected = false;
+                }
                 deviceStatus = formatUsbConnectionStatus(
                     usbScanResult,
                     usbConnection
@@ -382,41 +393,6 @@ int main (void) {
             }
         }
         ImGui::EndDisabled();
-        ImGui::BeginDisabled(usbConnection.isConnected);
-        if (ImGui::Button("Rescan devices", ImVec2(-1.0f, 32.0f))) {
-            usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
-
-            if (
-                usbConnection.isConnected &&
-                !isUsbDevicePresent(usbScanResult, connectedDevice)
-            ) {
-                oscilloscope::capture::stopAcquisitionLoop(&acquisitionLoop);
-                acquisitionRunning = false;
-                const SUsbConnectionResult disconnectResult =
-                    oscilloscope::usb::disconnectFromDevice(&usbConnection);
-
-                connectedDevice = {0U, 0U, 0U, 0U, NULL};
-                if (disconnectResult.errorMessage.empty()) {
-                    deviceStatus = formatUsbConnectionStatus(
-                        usbScanResult,
-                        usbConnection
-                    );
-                }
-                else {
-                    deviceStatus = formatUsbConnectionError(
-                        "Disconnect",
-                        disconnectResult
-                    );
-                }
-            }
-            else {
-                deviceStatus = formatUsbConnectionStatus(
-                    usbScanResult,
-                    usbConnection
-                );
-            }
-        }
-        ImGui::EndDisabled();
 
         if (usbConnection.isConnected) {
             if (ImGui::Button("Disconnect", ImVec2(-1.0f, 32.0f))) {
@@ -426,6 +402,7 @@ int main (void) {
                     oscilloscope::usb::disconnectFromDevice(&usbConnection);
 
                 connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                deviceWasDisconnected = false;
                 if (disconnectResult.errorMessage.empty()) {
                     deviceStatus = formatUsbConnectionStatus(
                         usbScanResult,
@@ -461,6 +438,7 @@ int main (void) {
                             &connectedDevice
                         )
                     ) {
+                        deviceWasDisconnected = false;
                         deviceStatus = formatUsbConnectionStatus(
                             usbScanResult,
                             usbConnection
