@@ -72,8 +72,10 @@
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
 
+#include "capture/acquisition_loop.h"
 #include "usb/usb_device.h"
 
+using oscilloscope::capture::SAcquisitionLoop;
 using oscilloscope::usb::EScanStatus;
 using oscilloscope::usb::SUsbConnection;
 using oscilloscope::usb::SUsbConnectionResult;
@@ -119,6 +121,7 @@ static void updateDemoMode(
     bool *demoMode,
     SUsbScanResult *usbScanResult,
     SUsbConnection *connection,
+    SAcquisitionLoop *acquisitionLoop,
     SUsbDeviceInfo *connectedDevice,
     std::string *deviceStatus
 );
@@ -172,13 +175,16 @@ int main (void) {
 
     bool running = true;
     bool acquisitionRunning = false;
-    bool demoMode = true;
     bool channelEnabled[] = {true, true};
     int timebase = 6;
     int voltsPerDivision[] = {2, 2};
     SUsbScanResult usbScanResult =
         oscilloscope::usb::enumerateSupportedDevices();
+    bool demoMode =
+        (usbScanResult.status != EScanStatus::eSuccess) ||
+        usbScanResult.devices.empty();
     SUsbConnection usbConnection = {NULL, NULL, 0U, false};
+    SAcquisitionLoop acquisitionLoop;
     SUsbDeviceInfo connectedDevice = {0U, 0U, 0U, 0U, NULL};
     std::string deviceStatus = formatUsbConnectionStatus(
         usbScanResult,
@@ -221,9 +227,11 @@ int main (void) {
                         &demoMode,
                         &usbScanResult,
                         &usbConnection,
+                        &acquisitionLoop,
                         &connectedDevice,
                         &deviceStatus
                     );
+                    acquisitionRunning = false;
                 }
                 ImGui::EndMenu();
             }
@@ -264,12 +272,31 @@ int main (void) {
 
         ImGui::SameLine();
         ImGui::BeginChild("Controls", ImVec2(260.0f, 0.0f), true);
+        ImGui::BeginDisabled(!(demoMode || usbConnection.isConnected));
         if (
             ImGui::Button(
                 acquisitionRunning ? "Stop" : "Start", ImVec2(-1.0f, 32.0f))
         ) {
-            acquisitionRunning = !acquisitionRunning;
+            if (acquisitionRunning) {
+                if (!demoMode) {
+                    oscilloscope::capture::stopAcquisitionLoop(
+                        &acquisitionLoop
+                    );
+                }
+                acquisitionRunning = false;
+            }
+            else {
+                if (!demoMode) {
+                    oscilloscope::capture::startAcquisitionLoop(
+                        &acquisitionLoop,
+                        usbConnection
+                    );
+                }
+                acquisitionRunning = true;
+            }
         }
+        ImGui::EndDisabled();
+        ImGui::BeginDisabled(usbConnection.isConnected);
         if (ImGui::Button("Rescan devices", ImVec2(-1.0f, 32.0f))) {
             usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
 
@@ -277,6 +304,8 @@ int main (void) {
                 usbConnection.isConnected &&
                 !isUsbDevicePresent(usbScanResult, connectedDevice)
             ) {
+                oscilloscope::capture::stopAcquisitionLoop(&acquisitionLoop);
+                acquisitionRunning = false;
                 const SUsbConnectionResult disconnectResult =
                     oscilloscope::usb::disconnectFromDevice(&usbConnection);
 
@@ -301,9 +330,12 @@ int main (void) {
                 );
             }
         }
+        ImGui::EndDisabled();
 
         if (usbConnection.isConnected) {
             if (ImGui::Button("Disconnect", ImVec2(-1.0f, 32.0f))) {
+                oscilloscope::capture::stopAcquisitionLoop(&acquisitionLoop);
+                acquisitionRunning = false;
                 const SUsbConnectionResult disconnectResult =
                     oscilloscope::usb::disconnectFromDevice(&usbConnection);
 
@@ -376,20 +408,24 @@ int main (void) {
                 &demoMode,
                 &usbScanResult,
                 &usbConnection,
+                &acquisitionLoop,
                 &connectedDevice,
                 &deviceStatus
             );
+            acquisitionRunning = false;
         }
         ImGui::EndChild();
 
         ImGui::SetCursorScreenPos(statusPosition);
         ImGui::Text(
-            "%s | %s | %s | CH1 %s | CH2 %s",
+            "%s | %s | %s | CH1 %s | CH2 %s | polls %lu err %lu",
             acquisitionRunning ? "Acquiring" : "Stopped",
             demoMode ? "Demo mode" : "Live mode",
             deviceStatus.c_str(),
             channelEnabled[0] ? "on" : "off",
-            channelEnabled[1] ? "on" : "off"
+            channelEnabled[1] ? "on" : "off",
+            acquisitionLoop.status.pollCount.load(),
+            acquisitionLoop.status.errorCount.load()
         );
         ImGui::End();
 
@@ -408,6 +444,7 @@ int main (void) {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
     if (usbConnection.isConnected) {
+        oscilloscope::capture::stopAcquisitionLoop(&acquisitionLoop);
         oscilloscope::usb::disconnectFromDevice(&usbConnection);
     }
     SDL_GL_DeleteContext(glContext);
@@ -480,6 +517,7 @@ static void updateDemoMode(
     bool *demoMode,
     SUsbScanResult *usbScanResult,
     SUsbConnection *connection,
+    SAcquisitionLoop *acquisitionLoop,
     SUsbDeviceInfo *connectedDevice,
     std::string *deviceStatus
 ) {
@@ -489,6 +527,7 @@ static void updateDemoMode(
 
     if (*demoMode) {
         if (connection->isConnected) {
+            oscilloscope::capture::stopAcquisitionLoop(acquisitionLoop);
             const SUsbConnectionResult disconnectResult =
                 oscilloscope::usb::disconnectFromDevice(connection);
 

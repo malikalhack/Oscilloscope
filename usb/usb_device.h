@@ -86,7 +86,7 @@ struct SUsbConnectionResult {
 };
 
 /** @brief Describes the outcome of a bulk endpoint transfer */
-enum class EBulkTransferStatus {
+enum class EUsbTransferStatus {
     eSuccess,    /**< The full requested length was transferred */
     eTimeout,    /**< All retry attempts timed out */
     eNoDevice,   /**< The device was disconnected mid-transfer */
@@ -94,8 +94,8 @@ enum class EBulkTransferStatus {
 };
 
 /** @brief Holds the result of a bulk endpoint transfer */
-struct SBulkTransferResult {
-    EBulkTransferStatus status; /**< Transfer outcome */
+struct SUsbTransferResult {
+    EUsbTransferStatus status; /**< Transfer outcome */
     int transferredBytes;       /**< Bytes actually transferred */
     std::string errorMessage;   /**< libusb error string when applicable */
 };
@@ -138,7 +138,7 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection);
  * @param[in] attempts Number of attempts before giving up on timeout
  * @returns Transfer status, bytes transferred, and error message
  */
-SBulkTransferResult bulkWrite(
+SUsbTransferResult bulkWrite(
     const SUsbConnection &connection,
     uint8_t endpointAddress,
     const uint8_t *data,
@@ -157,11 +157,57 @@ SBulkTransferResult bulkWrite(
  * @param[in] attempts Number of attempts before giving up on timeout
  * @returns Transfer status, bytes transferred, and error message
  */
-SBulkTransferResult bulkRead(
+SUsbTransferResult bulkRead(
     const SUsbConnection &connection,
     uint8_t endpointAddress,
     uint8_t *buffer,
     int length,
+    unsigned int timeoutMs = 500U,
+    unsigned int attempts = 3U
+);
+
+/**
+ * @brief Sends a vendor control OUT transfer, retrying on timeout
+ * @param[in] connection Active connection to write through
+ * @param[in] request Vendor bRequest code
+ * @param[in] data Buffer to send
+ * @param[in] length Number of bytes to send
+ * @param[in] value wValue field
+ * @param[in] index wIndex field
+ * @param[in] timeoutMs Per-attempt timeout in milliseconds
+ * @param[in] attempts Number of attempts before giving up on timeout
+ * @returns Transfer status, bytes transferred, and error message
+ */
+SUsbTransferResult controlWrite(
+    const SUsbConnection &connection,
+    uint8_t request,
+    const uint8_t *data,
+    uint16_t length,
+    uint16_t value = 0U,
+    uint16_t index = 0U,
+    unsigned int timeoutMs = 500U,
+    unsigned int attempts = 3U
+);
+
+/**
+ * @brief Reads a vendor control IN transfer, retrying on timeout
+ * @param[in] connection Active connection to read from
+ * @param[in] request Vendor bRequest code
+ * @param[out] buffer Buffer to receive into
+ * @param[in] length Number of bytes to read
+ * @param[in] value wValue field
+ * @param[in] index wIndex field
+ * @param[in] timeoutMs Per-attempt timeout in milliseconds
+ * @param[in] attempts Number of attempts before giving up on timeout
+ * @returns Transfer status, bytes transferred, and error message
+ */
+SUsbTransferResult controlRead(
+    const SUsbConnection &connection,
+    uint8_t request,
+    uint8_t *buffer,
+    uint16_t length,
+    uint16_t value = 0U,
+    uint16_t index = 0U,
     unsigned int timeoutMs = 500U,
     unsigned int attempts = 3U
 );

@@ -122,3 +122,37 @@ Records key decisions, structural changes, and completed development stages.
 - Read endpoint data chunks in a dedicated acquisition path.
 - Add buffering between USB reads and waveform processing.
 - Handle timeouts, I/O errors, disconnects, and recovery states.
+
+## 2026-09-04
+
+### Stage 3 - Endpoint read loop complete
+
+- Corrected the extracted DSO-2250 loader and firmware images and verified
+  their Intel HEX checksums; the proprietary files remain excluded from Git.
+- Added support for the operational `04b5:2250` identity alongside the
+  `04b4:2250` bootloader identity.
+- Wait for FX2 re-enumeration with bounded polling after firmware upload and
+  reconnect to the operational device on interface 0, alternate setting 0.
+- Extended the supplied udev rule to grant access to both USB identities.
+- Added vendor control-transfer helpers and the DSO-2250 initialization
+  sequence required before endpoint polling.
+- Implemented a dedicated acquisition thread that sends the capture-state
+  request to bulk endpoint `0x02` and reads 512-byte responses from endpoint
+  `0x86`.
+- Added successful-poll, transfer-error, and last-capture-state tracking with
+  thread-safe counters.
+- Made endpoint activity follow the Start/Stop lifecycle instead of beginning
+  at Connect; Stop, Disconnect, mode changes, application shutdown, and device
+  loss stop and join the acquisition thread before releasing USB resources.
+- Disabled Start until a live device is connected and disabled device rescans
+  while a connection is active.
+- Select Live mode at startup when a supported device is present, otherwise
+  retain Demo mode.
+
+### Hardware verification
+
+- Verified firmware re-enumeration from `04b4:2250` to `04b5:2250` on a
+  physical Hantek DSO-2250.
+- Verified successful `B3`, `B2`, bulk OUT, and 512-byte bulk IN transfers.
+- Confirmed the instrument LED lifecycle: red after Connect, green during
+  Start/acquisition, red after Stop, and off after Disconnect.

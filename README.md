@@ -11,20 +11,25 @@ is developed independently and has no Qt dependency.
 
 ## Status
 
-Current version: `0.2.0`.
+Current version: `0.2.2`.
 
-The current iteration provides the first UI shell:
+The current iteration provides a working USB connection and endpoint polling
+path for the Hantek DSO-2250:
 
 - CMake build configuration for C++14;
 - `Debug` and `Release` build targets;
 - a Makefile and Bash build script for Linux;
 - an SDL2 window with an OpenGL 3 context;
 - Dear ImGui integration, a menu, control panel, status line, and display grid;
-- a pinned Dear ImGui source dependency (`v1.90.9`) fetched by CMake.
+- a pinned Dear ImGui source dependency (`v1.90.9`) fetched by CMake;
+- discovery and connection through libusb;
+- FX2 firmware upload and operational-device re-enumeration;
+- a Start/Stop-controlled acquisition thread that polls the bulk endpoints;
+- poll and transfer-error counters in the status line.
 
-The shell provides presentation-only controls for acquisition state, demo mode,
-timebase, and the two channel scales. USB acquisition and waveform processing
-are planned for later iterations.
+The application starts in Live mode when a supported device is present and in
+Demo mode otherwise. Connecting prepares the device; endpoint traffic begins
+only after pressing Start and stops after pressing Stop.
 
 ## Planned Stack
 
@@ -63,12 +68,13 @@ The current application requires:
 - SDL2 development files;
 - OpenGL development files.
 - libusb-1.0 development files.
+- `fxload` for uploading the RAM-resident FX2 firmware.
 
 On Debian, Ubuntu, and Linux Mint:
 
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential cmake make pkg-config libsdl2-dev libgl1-mesa-dev libusb-1.0-0-dev
+sudo apt-get install build-essential cmake make pkg-config libsdl2-dev libgl1-mesa-dev libusb-1.0-0-dev fxload
 ```
 
 Dear ImGui is downloaded automatically by CMake during configuration.
@@ -76,14 +82,29 @@ Dear ImGui is downloaded automatically by CMake during configuration.
 ### Hantek DSO-2250 USB Access
 
 Linux requires a udev rule for a regular desktop user to open the Hantek device
-through libusb. Install the supplied rule, reload udev rules, then reconnect the
-oscilloscope:
+through libusb. The rule covers both the `04b4:2250` bootloader identity and the
+`04b5:2250` operational identity. Install the supplied rule, reload udev rules,
+then reconnect the oscilloscope:
 
 ```bash
 sudo cp usb/80-hantek-dso-2250.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
+
+### Hantek DSO-2250 Firmware
+
+The FX2 firmware is proprietary and is not stored in this repository. Supply
+the extracted files at these default paths:
+
+```text
+firmware/DSO2250_loader.hex
+firmware/DSO2250_firmware.hex
+```
+
+Set `OSCILLOSCOPE_FIRMWARE_DIR` to use another directory. On Connect, the
+application uploads the firmware to a `04b4:2250` device with `fxload`, waits
+for it to re-enumerate as `04b5:2250`, and then opens the operational device.
 
 ## Build
 
@@ -171,10 +192,10 @@ CI can update only the version metadata by passing `--skip-build`.
 
 ## Next Steps
 
-1. Add a demo waveform to the display grid.
-2. Implement a two-channel model, timebase, and basic controls.
-3. Add libusb support and a safe acquisition thread.
-4. Handle device disconnection and fallback to demo mode.
+1. Decode capture-state responses and acquired sample packets.
+2. Add buffering between USB acquisition and waveform processing.
+3. Render live and demo waveforms on the display grid.
+4. Implement the two-channel model, timebase, and instrument controls.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.

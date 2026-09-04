@@ -40,22 +40,32 @@ namespace usb {
 struct SSupportedDevice {
     uint16_t vendorId;
     uint16_t productId;
+    uint16_t operationalVendorId;
     uint8_t interfaceNumber;
     uint8_t alternateSetting;
+    bool requiresFirmware;
     const char *modelName;
     const char *firmwareBaseName;
 };
 
-/** @brief Microseconds to wait for the FX2 chip to re-enumerate after upload */
-static const unsigned int FIRMWARE_REENUMERATION_DELAY_US = 1500000U;
+/** @brief Delay between scans while waiting for FX2 re-enumeration */
+static const unsigned int FIRMWARE_REENUMERATION_POLL_DELAY_US = 100000U;
+/** @brief Maximum scans while waiting for the operational USB device */
+static const unsigned int FIRMWARE_REENUMERATION_ATTEMPTS = 50U;
 
 /****************************** Module variables ******************************/
 
 /** @brief Maps supported USB VID/PID pairs to model display names */
 static const SSupportedDevice supported_devices[] = {
-    /* Alt setting 0 exposes no endpoints; alt setting 1 has the bulk pair
-     * (EP2 OUT / EP6 IN) that the FX2 firmware actually uses. */
-    {0x04B4U, 0x2250U, 0U, 1U, "Hantek DSO-2250", "DSO2250"}
+    /* The bootloader exposes the bulk pair on alt setting 1. */
+    {
+        0x04B4U, 0x2250U, 0x04B5U, 0U, 1U, true,
+        "Hantek DSO-2250 Bootloader", "DSO2250"
+    },
+    {
+        0x04B5U, 0x2250U, 0x04B5U, 0U, 0U, false,
+        "Hantek DSO-2250", "DSO2250"
+    }
 };
 
 /***************************** Private prototypes *****************************/
@@ -123,7 +133,15 @@ static SFirmwarePaths resolveFirmwarePaths(
  * @param[in] transferResult Return value of `libusb_bulk_transfer`
  * @returns Classified transfer status
  */
-static EBulkTransferStatus classifyBulkTransferResult(int transferResult);
+static EUsbTransferStatus classifyBulkTransferResult(int transferResult);
+
+/**
+ * @brief Maps a libusb control transfer result code to a transfer status
+ * @param[in] transferResult Return value of `libusb_control_transfer`
+ *            (transferred byte count on success, negative error otherwise)
+ * @returns Classified transfer status
+ */
+static EUsbTransferStatus classifyControlTransferResult(int transferResult);
 
 /********************* Application Programming Interface **********************/
 
@@ -197,6 +215,7 @@ SUsbConnectionResult connectToDevice(
     int initializationResult = LIBUSB_SUCCESS;
     int openResult = LIBUSB_SUCCESS;
     int claimResult = LIBUSB_SUCCESS;
+    unsigned int reenumerationAttempt = 0U;
 
     if (connection == NULL) {
         result.status = EConnectionStatus::eDeviceNotFound;
@@ -228,30 +247,62 @@ SUsbConnectionResult connectToDevice(
                     result.errorMessage = "Requested USB device was not found";
                 }
                 else {
-                    firmwareResult = loadFx2Firmware(
-                        deviceInfo.busNumber,
-                        deviceInfo.deviceAddress,
-                        resolveFirmwarePaths(*supportedDevice)
-                    );
+                    if (supportedDevice->requiresFirmware) {
+                        firmwareResult = loadFx2Firmware(
+                            deviceInfo.busNumber,
+                            deviceInfo.deviceAddress,
+                            resolveFirmwarePaths(*supportedDevice)
+                        );
+                    }
 
                     if (firmwareResult.status != EFirmwareLoadStatus::eLoaded) {
                         result.status = EConnectionStatus::eFirmwareLoadFailed;
                         result.errorMessage = firmwareResult.errorMessage;
                     }
-                    else {
+                    else if (supportedDevice->requiresFirmware) {
                         /* The FX2 chip re-enumerates once firmware starts
                          * running, so the device pointer above is stale and
                          * its bus address may have changed. */
-                        usleep(FIRMWARE_REENUMERATION_DELAY_US);
                         libusb_free_device_list(deviceList, 1);
                         deviceList = NULL;
-                        deviceCount = libusb_get_device_list(context, &deviceList);
-                        device = findDeviceByVidPid(
-                            deviceList,
-                            deviceInfo.vendorId,
-                            deviceInfo.productId,
-                            deviceCount
-                        );
+                        device = NULL;
+
+                        for (
+                            reenumerationAttempt = 0U;
+                            (reenumerationAttempt <
+                                FIRMWARE_REENUMERATION_ATTEMPTS) &&
+                            (device == NULL);
+                            ++reenumerationAttempt
+                        ) {
+                            usleep(FIRMWARE_REENUMERATION_POLL_DELAY_US);
+                            deviceCount = libusb_get_device_list(
+                                context,
+                                &deviceList
+                            );
+
+                            if (deviceCount >= 0) {
+                                device = findDeviceByVidPid(
+                                    deviceList,
+                                    supportedDevice->operationalVendorId,
+                                    deviceInfo.productId,
+                                    deviceCount
+                                );
+
+                                if (device != NULL) {
+                                    supportedDevice = findSupportedDevice(
+                                        supportedDevice->operationalVendorId,
+                                        deviceInfo.productId
+                                    );
+                                }
+                            }
+
+                            if (device == NULL) {
+                                if (deviceList != NULL) {
+                                    libusb_free_device_list(deviceList, 1);
+                                    deviceList = NULL;
+                                }
+                            }
+                        }
 
                         if ((deviceCount < 0) || (device == NULL)) {
                             result.status = EConnectionStatus::eDeviceNotFound;
@@ -370,7 +421,7 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
 }
 
 /** @fn bulkWrite */
-SBulkTransferResult bulkWrite(
+SUsbTransferResult bulkWrite(
     const SUsbConnection &connection,
     const uint8_t endpointAddress,
     const uint8_t *data,
@@ -378,7 +429,7 @@ SBulkTransferResult bulkWrite(
     const unsigned int timeoutMs,
     const unsigned int attempts
 ) {
-    SBulkTransferResult result = {EBulkTransferStatus::eError, 0, ""};
+    SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
     int transferResult = LIBUSB_ERROR_TIMEOUT;
     int transferredBytes = 0;
     unsigned int attempt;
@@ -400,7 +451,7 @@ SBulkTransferResult bulkWrite(
 
     result.transferredBytes = transferredBytes;
     result.status = classifyBulkTransferResult(transferResult);
-    if (result.status != EBulkTransferStatus::eSuccess) {
+    if (result.status != EUsbTransferStatus::eSuccess) {
         result.errorMessage = libusb_error_name(transferResult);
     }
 
@@ -408,7 +459,7 @@ SBulkTransferResult bulkWrite(
 }
 
 /** @fn bulkRead */
-SBulkTransferResult bulkRead(
+SUsbTransferResult bulkRead(
     const SUsbConnection &connection,
     const uint8_t endpointAddress,
     uint8_t *buffer,
@@ -416,7 +467,7 @@ SBulkTransferResult bulkRead(
     const unsigned int timeoutMs,
     const unsigned int attempts
 ) {
-    SBulkTransferResult result = {EBulkTransferStatus::eError, 0, ""};
+    SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
     int transferResult = LIBUSB_ERROR_TIMEOUT;
     int transferredBytes = 0;
     unsigned int attempt;
@@ -438,7 +489,91 @@ SBulkTransferResult bulkRead(
 
     result.transferredBytes = transferredBytes;
     result.status = classifyBulkTransferResult(transferResult);
-    if (result.status != EBulkTransferStatus::eSuccess) {
+    if (result.status != EUsbTransferStatus::eSuccess) {
+        result.errorMessage = libusb_error_name(transferResult);
+    }
+
+    return result;
+}
+
+/** @fn controlWrite */
+SUsbTransferResult controlWrite(
+    const SUsbConnection &connection,
+    const uint8_t request,
+    const uint8_t *data,
+    const uint16_t length,
+    const uint16_t value,
+    const uint16_t index,
+    const unsigned int timeoutMs,
+    const unsigned int attempts
+) {
+    SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
+    int transferResult = LIBUSB_ERROR_TIMEOUT;
+    unsigned int attempt;
+
+    for (
+        attempt = 0U;
+        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
+        ++attempt
+    ) {
+        transferResult = libusb_control_transfer(
+            connection.handle,
+            LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR |
+                LIBUSB_RECIPIENT_DEVICE,
+            request,
+            value,
+            index,
+            const_cast<uint8_t*>(data),
+            length,
+            timeoutMs
+        );
+    }
+
+    result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
+    result.status = classifyControlTransferResult(transferResult);
+    if (result.status != EUsbTransferStatus::eSuccess) {
+        result.errorMessage = libusb_error_name(transferResult);
+    }
+
+    return result;
+}
+
+/** @fn controlRead */
+SUsbTransferResult controlRead(
+    const SUsbConnection &connection,
+    const uint8_t request,
+    uint8_t *buffer,
+    const uint16_t length,
+    const uint16_t value,
+    const uint16_t index,
+    const unsigned int timeoutMs,
+    const unsigned int attempts
+) {
+    SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
+    int transferResult = LIBUSB_ERROR_TIMEOUT;
+    unsigned int attempt;
+
+    for (
+        attempt = 0U;
+        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
+        ++attempt
+    ) {
+        transferResult = libusb_control_transfer(
+            connection.handle,
+            LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR |
+                LIBUSB_RECIPIENT_DEVICE,
+            request,
+            value,
+            index,
+            buffer,
+            length,
+            timeoutMs
+        );
+    }
+
+    result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
+    result.status = classifyControlTransferResult(transferResult);
+    if (result.status != EUsbTransferStatus::eSuccess) {
         result.errorMessage = libusb_error_name(transferResult);
     }
 
@@ -581,17 +716,36 @@ static bool firmwareFileExists(const std::string &path) {
 }
 
 /** @fn classifyBulkTransferResult */
-static EBulkTransferStatus classifyBulkTransferResult(const int transferResult) {
-    EBulkTransferStatus result = EBulkTransferStatus::eError;
+static EUsbTransferStatus classifyBulkTransferResult(const int transferResult) {
+    EUsbTransferStatus result = EUsbTransferStatus::eError;
 
     if (transferResult == LIBUSB_SUCCESS) {
-        result = EBulkTransferStatus::eSuccess;
+        result = EUsbTransferStatus::eSuccess;
     }
     else if (transferResult == LIBUSB_ERROR_TIMEOUT) {
-        result = EBulkTransferStatus::eTimeout;
+        result = EUsbTransferStatus::eTimeout;
     }
     else if (transferResult == LIBUSB_ERROR_NO_DEVICE) {
-        result = EBulkTransferStatus::eNoDevice;
+        result = EUsbTransferStatus::eNoDevice;
+    }
+
+    return result;
+}
+
+/** @fn classifyControlTransferResult */
+static EUsbTransferStatus classifyControlTransferResult(
+    const int transferResult
+) {
+    EUsbTransferStatus result = EUsbTransferStatus::eError;
+
+    if (transferResult >= 0) {
+        result = EUsbTransferStatus::eSuccess;
+    }
+    else if (transferResult == LIBUSB_ERROR_TIMEOUT) {
+        result = EUsbTransferStatus::eTimeout;
+    }
+    else if (transferResult == LIBUSB_ERROR_NO_DEVICE) {
+        result = EUsbTransferStatus::eNoDevice;
     }
 
     return result;

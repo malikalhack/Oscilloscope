@@ -19,6 +19,7 @@ FetchContent_MakeAvailable(imgui)
 find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
 
 set(APP_NAME run)
@@ -34,6 +35,7 @@ set(SOURCES_LIST
     app/main.cpp
     usb/usb_device.cpp
     usb/firmware_loader.cpp
+    capture/acquisition_loop.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -45,6 +47,7 @@ set(SOURCES_LIST
 set(HEADERS_LIST
     usb/usb_device.h
     usb/firmware_loader.h
+    capture/acquisition_loop.h
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -71,5 +74,6 @@ target_link_libraries(${APP_NAME} PRIVATE
     SDL2::SDL2
     OpenGL::GL
     PkgConfig::LIBUSB
+    Threads::Threads
 )
 
