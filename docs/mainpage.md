@@ -1,6 +1,6 @@
 # Oscilloscope
 
-**Version:** 0.2.5 | **Status:** active development
+**Version:** 0.2.6 | **Status:** active development
 
 Modern cross-platform client for Hantek USB oscilloscopes. Linux Mint and
 Ubuntu are the primary development and testing platforms; compatibility with

@@ -1,6 +1,6 @@
 /**
  * @file    acquisition_loop.cpp
- * @version 0.2.5
+ * @version 0.2.6
  * @authors Anton Chernov
  * @date    2026-09-02
  * @date    @showdate "%Y-%m-%d"
