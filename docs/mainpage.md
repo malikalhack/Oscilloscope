@@ -1,6 +1,6 @@
 # Oscilloscope
 
-**Version:** 0.2.2 | **Status:** active development
+**Version:** 0.2.3 | **Status:** active development
 
 Cross-platform USB oscilloscope client for Linux Mint, Ubuntu, and Debian.
 The project is written from scratch in C++14 and does not depend on Qt.
