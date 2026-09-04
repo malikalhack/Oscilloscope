@@ -103,6 +103,9 @@ static const uint32_t USB_PRESENCE_INTERVAL_MS = 1000U;
 /** @brief Cleared device identity used to reset connection bookkeeping */
 static const SUsbDeviceInfo EMPTY_DEVICE_INFO = {0U, 0U, 0U, 0U, NULL};
 
+/** @brief Interval between USB presence checks outside acquisition */
+static const uint32_t USB_PRESENCE_INTERVAL_MS = 1000U;
+
 #ifdef __GNUC__  // GCC/MinGW only
 const char version_info[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
