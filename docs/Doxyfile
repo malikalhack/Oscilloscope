@@ -911,6 +911,7 @@ WARN_LOGFILE           =
 INPUT                  = ./mainpage.md \
                          ../app \
                          ../usb/inc \
+                         ../usb/src \
                          ../capture
 
 # This tag can be used to specify the character encoding of the source files
