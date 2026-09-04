@@ -181,6 +181,14 @@ Always put the macro name in the closing comment:
 
 Prefer a `switch` statement over a long `if`/`else if` chain.
 
+Follow DRY: do not duplicate implementation logic. Reuse an existing helper or
+abstraction when suitable; otherwise extract the smallest clearly named shared
+helper that removes meaningful repetition.
+
+Follow KISS: prefer the simplest design that fully satisfies the current
+requirements. Do not add layers, generic abstractions, configuration, or
+extension points without a concrete present need.
+
 ## Doxygen API documentation
 
 Public **declarations** (in `.h`) carry a full Doxygen block; **definitions**
