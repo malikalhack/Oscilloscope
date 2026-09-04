@@ -33,11 +33,15 @@ libusb for communication with supported instruments.
 | Module | Responsibility |
 | --- | --- |
 | `app/` | Application entry point, event loop, and UI composition |
-| `core/` | Shared application types and state |
-| `usb/` | Device discovery and USB communication |
 | `capture/` | Sample acquisition and buffering |
-| `render/` | Waveform rendering |
-| `ui/` | Reusable interface components |
+| `core/` | Planned shared application types and state |
+| `docs/` | Generated documentation sources |
+| `firmware/` | Default path for local device firmware files |
+| `render/` | Planned waveform rendering |
+| `tests/` | Automated tests run through CTest |
+| `tools/` | Optional firmware extraction utilities |
+| `ui/` | Planned reusable interface components |
+| `usb/` | Device discovery, firmware loading, and USB communication |
 
 ## USB device operation
 
