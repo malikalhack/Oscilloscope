@@ -1,6 +1,6 @@
 /**
  * @file    firmware_loader.cpp
- * @version 0.2.3
+ * @version 0.2.4
  * @authors Anton Chernov
  * @date    2026-09-02
  * @date    @showdate "%Y-%m-%d"
@@ -32,15 +32,6 @@
 
 namespace oscilloscope {
 namespace usb {
-
-/***************************** Private prototypes *****************************/
-
-/**
- * @brief Checks whether a regular file exists at the given path
- * @param[in] path File path to check
- * @returns True when the file exists
- */
-static bool fileExists(const std::string &path);
 
 /********************* Application Programming Interface **********************/
 
@@ -114,10 +105,10 @@ SFirmwareLoadResult loadFx2Firmware(
     return result;
 }
 
-/****************************** Private functions *****************************/
+/*----------------------------------------------------------------------------*/
 
 /** @fn fileExists */
-static bool fileExists(const std::string &path) {
+bool fileExists(const std::string &path) {
     struct stat statBuffer;
     return stat(path.c_str(), &statBuffer) == 0;
 }

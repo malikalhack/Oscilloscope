@@ -1,6 +1,6 @@
 /**
  * @file    usb_device.cpp
- * @version 0.2.3
+ * @version 0.2.4
  * @authors Anton Chernov
  * @date    2026-09-01
  * @date    @showdate "%Y-%m-%d"
@@ -21,8 +21,6 @@
  */
 
 /******************************* Included files *******************************/
-#include <sys/stat.h>
-
 #include <cstdlib>
 #include <unistd.h>
 
@@ -71,6 +69,29 @@ static const SSupportedDevice supported_devices[] = {
 /***************************** Private prototypes *****************************/
 
 /**
+ * @brief Invokes a libusb transfer, retrying only while it times out
+ * @tparam Transfer Callable returning the libusb transfer result code
+ * @param[in] attempts Maximum attempts before giving up on a timeout
+ * @param[in] transfer Callable performing one libusb transfer
+ * @returns The libusb result code of the last attempt
+ */
+template <typename Transfer>
+static int retryWhileTimeout(const unsigned int attempts, Transfer transfer) {
+    int transferResult = LIBUSB_ERROR_TIMEOUT;
+    unsigned int attempt = 0U;
+
+    for (
+        attempt = 0U;
+        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
+        ++attempt
+    ) {
+        transferResult = transfer();
+    }
+
+    return transferResult;
+}
+
+/**
  * @brief Finds the supported-model entry for a USB VID/PID pair
  * @param[in] vendorId USB vendor identifier
  * @param[in] productId USB product identifier
@@ -82,38 +103,25 @@ static const SSupportedDevice* findSupportedDevice(
 );
 
 /**
- * @brief Finds a specific bus/address combination in the libusb device list
+ * @brief Finds a connected device by VID/PID and optional bus/address
  * @param[in] deviceList libusb device list to search
- * @param[in] deviceInfo Requested device descriptor
- * @returns Matching libusb device, or NULL when not found
- */
-static libusb_device* findDeviceByInfo(
-    libusb_device **deviceList,
-    const SUsbDeviceInfo &deviceInfo,
-    const ssize_t deviceCount
-);
-
-/**
- * @brief Finds the first connected device matching a VID/PID pair
- * @param[in] deviceList libusb device list to search
+ * @param[in] deviceCount Number of entries in `deviceList`
  * @param[in] vendorId USB vendor identifier to match
  * @param[in] productId USB product identifier to match
- * @param[in] deviceCount Number of entries in `deviceList`
+ * @param[in] matchLocation Also require the bus/address to match when true
+ * @param[in] busNumber USB bus number to match when `matchLocation` is true
+ * @param[in] deviceAddress USB address to match when `matchLocation` is true
  * @returns Matching libusb device, or NULL when not found
  */
-static libusb_device* findDeviceByVidPid(
+static libusb_device* findDevice(
     libusb_device **deviceList,
+    const ssize_t deviceCount,
     uint16_t vendorId,
     uint16_t productId,
-    const ssize_t deviceCount
+    bool matchLocation,
+    uint8_t busNumber,
+    uint8_t deviceAddress
 );
-
-/**
- * @brief Checks whether a regular file exists at the given path
- * @param[in] path File path to check
- * @returns True when the file exists
- */
-static bool firmwareFileExists(const std::string &path);
 
 /**
  * @brief Builds the loader/firmware .hex paths for a supported model
@@ -213,6 +221,7 @@ SUsbScanResult enumerateSupportedDevices() {
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn connectToDevice */
 SUsbConnectionResult connectToDevice(
@@ -250,7 +259,15 @@ SUsbConnectionResult connectToDevice(
             }
             else {
                 deviceCount = libusb_get_device_list(context, &deviceList);
-                device = findDeviceByInfo(deviceList, deviceInfo, deviceCount);
+                device = findDevice(
+                    deviceList,
+                    deviceCount,
+                    deviceInfo.vendorId,
+                    deviceInfo.productId,
+                    true,
+                    deviceInfo.busNumber,
+                    deviceInfo.deviceAddress
+                );
                 supportedDevice = findSupportedDevice(
                     deviceInfo.vendorId,
                     deviceInfo.productId
@@ -296,11 +313,14 @@ SUsbConnectionResult connectToDevice(
                             );
 
                             if (deviceCount >= 0) {
-                                device = findDeviceByVidPid(
+                                device = findDevice(
                                     deviceList,
+                                    deviceCount,
                                     supportedDevice->operationalVendorId,
                                     deviceInfo.productId,
-                                    deviceCount
+                                    false,
+                                    0U,
+                                    0U
                                 );
 
                                 if (device != NULL) {
@@ -393,6 +413,7 @@ SUsbConnectionResult connectToDevice(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn disconnectFromDevice */
 SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
@@ -434,6 +455,7 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn getConnectedDeviceInfo */
 bool getConnectedDeviceInfo(
@@ -473,6 +495,7 @@ bool getConnectedDeviceInfo(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn bulkWrite */
 SUsbTransferResult bulkWrite(
@@ -484,24 +507,20 @@ SUsbTransferResult bulkWrite(
     const unsigned int attempts
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
-    int transferResult = LIBUSB_ERROR_TIMEOUT;
     int transferredBytes = 0;
-    unsigned int attempt;
-
-    for (
-        attempt = 0U;
-        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
-        ++attempt
-    ) {
-        transferResult = libusb_bulk_transfer(
-            connection.handle,
-            endpointAddress,
-            const_cast<uint8_t*>(data),
-            length,
-            &transferredBytes,
-            timeoutMs
-        );
-    }
+    const int transferResult = retryWhileTimeout(
+        attempts,
+        [&]() {
+            return libusb_bulk_transfer(
+                connection.handle,
+                endpointAddress,
+                const_cast<uint8_t*>(data),
+                length,
+                &transferredBytes,
+                timeoutMs
+            );
+        }
+    );
 
     result = makeTransferResult(
         classifyBulkTransferResult(transferResult),
@@ -512,6 +531,7 @@ SUsbTransferResult bulkWrite(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn bulkRead */
 SUsbTransferResult bulkRead(
@@ -524,24 +544,20 @@ SUsbTransferResult bulkRead(
     const int minimumLength
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
-    int transferResult = LIBUSB_ERROR_TIMEOUT;
     int transferredBytes = 0;
-    unsigned int attempt;
-
-    for (
-        attempt = 0U;
-        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
-        ++attempt
-    ) {
-        transferResult = libusb_bulk_transfer(
-            connection.handle,
-            endpointAddress,
-            buffer,
-            length,
-            &transferredBytes,
-            timeoutMs
-        );
-    }
+    const int transferResult = retryWhileTimeout(
+        attempts,
+        [&]() {
+            return libusb_bulk_transfer(
+                connection.handle,
+                endpointAddress,
+                buffer,
+                length,
+                &transferredBytes,
+                timeoutMs
+            );
+        }
+    );
 
     result = makeTransferResult(
         classifyBulkTransferResult(transferResult),
@@ -552,6 +568,7 @@ SUsbTransferResult bulkRead(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn controlWrite */
 SUsbTransferResult controlWrite(
@@ -565,26 +582,22 @@ SUsbTransferResult controlWrite(
     const unsigned int attempts
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
-    int transferResult = LIBUSB_ERROR_TIMEOUT;
-    unsigned int attempt;
-
-    for (
-        attempt = 0U;
-        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
-        ++attempt
-    ) {
-        transferResult = libusb_control_transfer(
-            connection.handle,
-            LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR |
-                LIBUSB_RECIPIENT_DEVICE,
-            request,
-            value,
-            index,
-            const_cast<uint8_t*>(data),
-            length,
-            timeoutMs
-        );
-    }
+    const int transferResult = retryWhileTimeout(
+        attempts,
+        [&]() {
+            return libusb_control_transfer(
+                connection.handle,
+                LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR |
+                    LIBUSB_RECIPIENT_DEVICE,
+                request,
+                value,
+                index,
+                const_cast<uint8_t*>(data),
+                length,
+                timeoutMs
+            );
+        }
+    );
 
     result = makeTransferResult(
         classifyControlTransferResult(transferResult),
@@ -595,6 +608,7 @@ SUsbTransferResult controlWrite(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn controlRead */
 SUsbTransferResult controlRead(
@@ -609,26 +623,22 @@ SUsbTransferResult controlRead(
     const uint16_t minimumLength
 ) {
     SUsbTransferResult result = {EUsbTransferStatus::eError, 0, ""};
-    int transferResult = LIBUSB_ERROR_TIMEOUT;
-    unsigned int attempt;
-
-    for (
-        attempt = 0U;
-        (attempt < attempts) && (transferResult == LIBUSB_ERROR_TIMEOUT);
-        ++attempt
-    ) {
-        transferResult = libusb_control_transfer(
-            connection.handle,
-            LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR |
-                LIBUSB_RECIPIENT_DEVICE,
-            request,
-            value,
-            index,
-            buffer,
-            length,
-            timeoutMs
-        );
-    }
+    const int transferResult = retryWhileTimeout(
+        attempts,
+        [&]() {
+            return libusb_control_transfer(
+                connection.handle,
+                LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR |
+                    LIBUSB_RECIPIENT_DEVICE,
+                request,
+                value,
+                index,
+                buffer,
+                length,
+                timeoutMs
+            );
+        }
+    );
 
     result = makeTransferResult(
         classifyControlTransferResult(transferResult),
@@ -663,47 +673,17 @@ static const SSupportedDevice* findSupportedDevice(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
-/** @fn findDeviceByInfo */
-static libusb_device* findDeviceByInfo(
+/** @fn findDevice */
+static libusb_device* findDevice(
     libusb_device **deviceList,
-    const SUsbDeviceInfo &deviceInfo,
-    const ssize_t deviceCount
-) {
-    libusb_device *result = NULL;
-    libusb_device *candidate = NULL;
-    libusb_device_descriptor descriptor;
-    int descriptorResult = LIBUSB_ERROR_OTHER;
-
-    for (ssize_t index = 0; index < deviceCount; ++index) {
-        candidate = deviceList[index];
-        descriptorResult = libusb_get_device_descriptor(
-            candidate,
-            &descriptor
-        );
-
-        if (descriptorResult == LIBUSB_SUCCESS) {
-            if (
-                (descriptor.idVendor == deviceInfo.vendorId) &&
-                (descriptor.idProduct == deviceInfo.productId) &&
-                (libusb_get_bus_number(candidate) == deviceInfo.busNumber) &&
-                (libusb_get_device_address(candidate) == deviceInfo.deviceAddress)
-            ) {
-                result = candidate;
-                break;
-            }
-        }
-    }
-
-    return result;
-}
-
-/** @fn findDeviceByVidPid */
-static libusb_device* findDeviceByVidPid(
-    libusb_device **deviceList,
+    const ssize_t deviceCount,
     const uint16_t vendorId,
     const uint16_t productId,
-    const ssize_t deviceCount
+    const bool matchLocation,
+    const uint8_t busNumber,
+    const uint8_t deviceAddress
 ) {
     libusb_device *result = NULL;
     libusb_device *candidate = NULL;
@@ -717,19 +697,22 @@ static libusb_device* findDeviceByVidPid(
             &descriptor
         );
 
-        if (descriptorResult == LIBUSB_SUCCESS) {
-            if (
-                (descriptor.idVendor == vendorId) &&
-                (descriptor.idProduct == productId)
-            ) {
-                result = candidate;
-                break;
-            }
+        if (
+            (descriptorResult == LIBUSB_SUCCESS) &&
+            (descriptor.idVendor == vendorId) &&
+            (descriptor.idProduct == productId) &&
+            (!matchLocation ||
+             ((libusb_get_bus_number(candidate) == busNumber) &&
+              (libusb_get_device_address(candidate) == deviceAddress)))
+        ) {
+            result = candidate;
+            break;
         }
     }
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn resolveFirmwarePaths */
 static SFirmwarePaths resolveFirmwarePaths(
@@ -752,7 +735,7 @@ static SFirmwarePaths resolveFirmwarePaths(
                 std::string(candidateDirs[index]) + "/" +
                 supportedDevice.firmwareBaseName + "_loader.hex";
 
-            if (firmwareFileExists(candidateLoaderPath)) {
+            if (fileExists(candidateLoaderPath)) {
                 firmwareDir = candidateDirs[index];
                 break;
             }
@@ -768,12 +751,7 @@ static SFirmwarePaths resolveFirmwarePaths(
 
     return paths;
 }
-
-/** @fn firmwareFileExists */
-static bool firmwareFileExists(const std::string &path) {
-    struct stat statBuffer;
-    return stat(path.c_str(), &statBuffer) == 0;
-}
+/*----------------------------------------------------------------------------*/
 
 /** @fn classifyBulkTransferResult */
 static EUsbTransferStatus classifyBulkTransferResult(const int transferResult) {
@@ -791,6 +769,7 @@ static EUsbTransferStatus classifyBulkTransferResult(const int transferResult) {
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
 
 /** @fn classifyControlTransferResult */
 static EUsbTransferStatus classifyControlTransferResult(

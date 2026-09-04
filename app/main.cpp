@@ -1,6 +1,6 @@
 /**
  * @file    main.cpp
- * @version 0.2.3
+ * @version 0.2.4
  * @authors Anton Chernov
  * @date    2026-08-28
  * @date    @showdate "%Y-%m-%d"
@@ -20,34 +20,44 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/********************************* Definition ********************************/
+/********************************* Definitions ********************************/
 
 /**
  * @def VERSION_MAJOR
- * @brief Major version number of Cypher (breaking API changes).
+ * @brief Major version number of Oscilloscope (breaking API changes).
  */
 #define VERSION_MAJOR     0
 
 /**
  * @def VERSION_MINOR
- * @brief Minor version number of Cypher (backwards-compatible additions).
+ * @brief Minor version number of Oscilloscope (backwards-compatible additions).
  */
 #define VERSION_MINOR     2
 
 /**
  * @def VERSION_PATCH
- * @brief Patch version number of Cypher (backwards-compatible bug fixes).
+ * @brief Patch version number of Oscilloscope (backwards-compatible bug fixes).
  */
-#define VERSION_PATCH     3
+#define VERSION_PATCH     4
+
+/**
+ * @def VERSION_STR_
+ * @brief Stringizes its argument through the preprocessor
+ */
+#define VERSION_STR_(x)   #x
+
+/**
+ * @def VERSION_XSTR_
+ * @brief Expands its argument, then stringizes the expansion
+ */
+#define VERSION_XSTR_(x)  VERSION_STR_(x)
 
 /**
  * @def VERSION_STRING
- * @brief Cypher version as a printable "MAJOR.MINOR.PATCH" string literal.
+ * @brief Oscilloscope version as a printable "MAJOR.MINOR.PATCH" string literal
  * @details Assembled at compile time from the numeric version macros, so it
  * costs no RAM - suitable even for the most memory-constrained targets.
  */
-#define VERSION_STR_(x)   #x
-#define VERSION_XSTR_(x)  VERSION_STR_(x)
 #define VERSION_STRING \
     VERSION_XSTR_(VERSION_MAJOR) "." \
     VERSION_XSTR_(VERSION_MINOR) "." \
@@ -72,7 +82,7 @@
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
 
-#include "capture/acquisition_loop.h"
+#include "acquisition_loop.h"
 #include "usb_device.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
@@ -85,17 +95,20 @@ using oscilloscope::usb::SUsbConnectionResult;
 using oscilloscope::usb::SUsbDeviceInfo;
 using oscilloscope::usb::SUsbScanResult;
 
-/***************************** Private variables *****************************/
+/****************************** Module variables ******************************/
 
 /** @brief Interval between USB presence checks outside acquisition */
 static const uint32_t USB_PRESENCE_INTERVAL_MS = 1000U;
 
+/** @brief Cleared device identity used to reset connection bookkeeping */
+static const SUsbDeviceInfo EMPTY_DEVICE_INFO = {0U, 0U, 0U, 0U, NULL};
+
 #ifdef __GNUC__  // GCC/MinGW only
 const char version_info[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
-    "FileVersion: 0.2.3.0\n"
+    "FileVersion: 0.2.4.0\n"
     "ProductName: Oscilloscope\n"
-    "ProductVersion: 0.2.3.0\n"
+    "ProductVersion: 0.2.4.0\n"
     "CompanyName: N/A\n"
     "LegalCopyright: Copyright (C) Anton Chernov, 2026\n"
     "OriginalFilename: run\n";
@@ -105,29 +118,76 @@ const char build_info[] __attribute__((section(".buildinfo"), used)) =
     "Compiler: GCC " __VERSION__ "\n";
 
 #endif // __GNUC__
-/**************************** Function prototypes ****************************/
+/***************************** Private prototypes *****************************/
+
+/**
+ * @brief Draws the oscilloscope background grid into a draw list
+ * @param[in] drawList ImGui draw list to render into
+ * @param[in] position Top-left corner of the grid in screen space
+ * @param[in] size Grid dimensions in pixels
+ */
 static void drawOscilloscopeGrid(
     ImDrawList *drawList,
     const ImVec2 &position,
     const ImVec2 &size
 );
+
+/**
+ * @brief Checks whether a device is still present in a scan result
+ * @param[in] scanResult Latest supported-device scan result
+ * @param[in] deviceInfo Device identity to look for
+ * @returns True when a matching device is present
+ */
 static bool isUsbDevicePresent(
     const SUsbScanResult &scanResult,
     const SUsbDeviceInfo &deviceInfo
 );
+
+/**
+ * @brief Builds the status-line text for the current USB connection
+ * @param[in] scanResult Latest supported-device scan result
+ * @param[in] connection Current USB connection state
+ * @returns Human-readable connection status text
+ */
 static std::string formatUsbConnectionStatus(
     const SUsbScanResult &scanResult,
     const SUsbConnection &connection
 );
+
+/**
+ * @brief Builds a status-line message for a failed connection operation
+ * @param[in] operation Name of the operation that failed
+ * @param[in] result Connection result carrying the error message
+ * @returns Human-readable error text
+ */
 static std::string formatUsbConnectionError(
     const char *operation,
     const SUsbConnectionResult &result
 );
+
+/**
+ * @brief Builds a status-line message describing an acquisition fault
+ * @param[in] operation Polling operation that failed
+ * @param[in] transferStatus USB transfer status of the failure
+ * @returns Human-readable acquisition error text
+ */
 static std::string formatAcquisitionError(
     EAcquisitionOperation operation,
     EUsbTransferStatus transferStatus
 );
+
+/**
+ * @brief Switches between demo and live mode and updates USB state
+ * @param[in] demoModeEnabled Desired demo-mode state
+ * @param[out] demoMode Demo-mode flag to update
+ * @param[out] usbScanResult Scan result refreshed when leaving demo mode
+ * @param[in,out] connection Connection closed when entering demo mode
+ * @param[in,out] acquisitionLoop Acquisition worker stopped when needed
+ * @param[out] connectedDevice Connected-device identity to reset
+ * @param[out] deviceStatus Status-line text to update
+ */
 static void updateDemoMode(
+    bool demoModeEnabled,
     bool *demoMode,
     SUsbScanResult *usbScanResult,
     SUsbConnection *connection,
@@ -136,8 +196,49 @@ static void updateDemoMode(
     std::string *deviceStatus
 );
 
+/**
+ * @brief Handles a terminal acquisition fault detected on the worker
+ * @param[in,out] acquisitionLoop Acquisition worker to inspect and join
+ * @param[in,out] connection Connection closed when the device was lost
+ * @param[out] connectedDevice Connected-device identity to reset
+ * @param[out] acquisitionRunning Acquisition flag cleared on a fault
+ * @param[out] deviceWasDisconnected Set when the device was lost
+ * @param[out] deviceStatus Status-line text to update
+ */
+static void handleAcquisitionFault(
+    SAcquisitionLoop *acquisitionLoop,
+    SUsbConnection *connection,
+    SUsbDeviceInfo *connectedDevice,
+    bool *acquisitionRunning,
+    bool *deviceWasDisconnected,
+    std::string *deviceStatus
+);
+
+/**
+ * @brief Periodically checks device presence outside acquisition
+ * @param[in] demoMode True while demo mode is active
+ * @param[in] acquisitionRunning True while acquisition is running
+ * @param[in,out] usbScanResult Scan result refreshed on each check
+ * @param[in,out] connection Connection closed when the device vanished
+ * @param[out] connectedDevice Connected-device identity to reset
+ * @param[in,out] deviceWasDisconnected Tracks the disconnected state
+ * @param[in,out] nextPresenceCheck Tick of the next scheduled check
+ * @param[out] deviceStatus Status-line text to update
+ */
+static void pollUsbPresence(
+    bool demoMode,
+    bool acquisitionRunning,
+    SUsbScanResult *usbScanResult,
+    SUsbConnection *connection,
+    SUsbDeviceInfo *connectedDevice,
+    bool *deviceWasDisconnected,
+    uint32_t *nextPresenceCheck,
+    std::string *deviceStatus
+);
+
 /********************* Application Programming Interface *********************/
 
+/** @fn main */
 int main (void) {
     char *basePath = NULL;
     SDL_Surface *windowIcon = NULL;
@@ -214,7 +315,7 @@ int main (void) {
         usbScanResult.devices.empty();
     SUsbConnection usbConnection = {NULL, NULL, 0U, false};
     SAcquisitionLoop acquisitionLoop;
-    SUsbDeviceInfo connectedDevice = {0U, 0U, 0U, 0U, NULL};
+    SUsbDeviceInfo connectedDevice = EMPTY_DEVICE_INFO;
     std::string deviceStatus = formatUsbConnectionStatus(
         usbScanResult,
         usbConnection
@@ -243,67 +344,25 @@ int main (void) {
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        const EAcquisitionState acquisitionState =
-            acquisitionLoop.status.state.load();
-        if (
-            acquisitionRunning &&
-            ((acquisitionState == EAcquisitionState::eDeviceLost) ||
-             (acquisitionState == EAcquisitionState::eFailed))
-        ) {
-            const std::string acquisitionError = formatAcquisitionError(
-                acquisitionLoop.status.failedOperation.load(),
-                acquisitionLoop.status.lastTransferStatus.load()
-            );
+        handleAcquisitionFault(
+            &acquisitionLoop,
+            &usbConnection,
+            &connectedDevice,
+            &acquisitionRunning,
+            &deviceWasDisconnected,
+            &deviceStatus
+        );
 
-            oscilloscope::capture::joinFinishedAcquisitionLoop(
-                &acquisitionLoop
-            );
-            acquisitionRunning = false;
-            if (acquisitionState == EAcquisitionState::eDeviceLost) {
-                oscilloscope::usb::disconnectFromDevice(&usbConnection);
-                connectedDevice = {0U, 0U, 0U, 0U, NULL};
-                deviceWasDisconnected = true;
-                deviceStatus = "Device disconnected: " + acquisitionError;
-            }
-            else {
-                deviceStatus = "Acquisition stopped: " + acquisitionError;
-            }
-        }
-
-        const uint32_t currentTicks = SDL_GetTicks();
-        if (
-            !demoMode &&
-            !acquisitionRunning &&
-            (static_cast<int32_t>(currentTicks - nextUsbPresenceCheck) >= 0)
-        ) {
-            usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
-            nextUsbPresenceCheck =
-                currentTicks + USB_PRESENCE_INTERVAL_MS;
-
-            if (
-                usbConnection.isConnected &&
-                (usbScanResult.status == EScanStatus::eSuccess) &&
-                !isUsbDevicePresent(usbScanResult, connectedDevice)
-            ) {
-                oscilloscope::usb::disconnectFromDevice(&usbConnection);
-                connectedDevice = {0U, 0U, 0U, 0U, NULL};
-                deviceWasDisconnected = true;
-                deviceStatus = "Device disconnected";
-            }
-            else if (
-                !usbConnection.isConnected &&
-                (!usbScanResult.devices.empty() ||
-                 !deviceWasDisconnected)
-            ) {
-                if (!usbScanResult.devices.empty()) {
-                    deviceWasDisconnected = false;
-                }
-                deviceStatus = formatUsbConnectionStatus(
-                    usbScanResult,
-                    usbConnection
-                );
-            }
-        }
+        pollUsbPresence(
+            demoMode,
+            acquisitionRunning,
+            &usbScanResult,
+            &usbConnection,
+            &connectedDevice,
+            &deviceWasDisconnected,
+            &nextUsbPresenceCheck,
+            &deviceStatus
+        );
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
@@ -313,10 +372,9 @@ int main (void) {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
-                bool newDemoMode = demoMode;
-
-                if (ImGui::MenuItem("Demo mode", NULL, &newDemoMode)) {
+                if (ImGui::MenuItem("Demo mode", NULL, demoMode)) {
                     updateDemoMode(
+                        !demoMode,
                         &demoMode,
                         &usbScanResult,
                         &usbConnection,
@@ -401,7 +459,7 @@ int main (void) {
                 const SUsbConnectionResult disconnectResult =
                     oscilloscope::usb::disconnectFromDevice(&usbConnection);
 
-                connectedDevice = {0U, 0U, 0U, 0U, NULL};
+                connectedDevice = EMPTY_DEVICE_INFO;
                 deviceWasDisconnected = false;
                 if (disconnectResult.errorMessage.empty()) {
                     deviceStatus = formatUsbConnectionStatus(
@@ -478,10 +536,9 @@ int main (void) {
             ImGui::PopID();
         }
         ImGui::Separator();
-        bool newDemoMode = demoMode;
-
-        if (ImGui::Checkbox("Demo mode", &newDemoMode)) {
+        if (ImGui::Checkbox("Demo mode", &demoMode)) {
             updateDemoMode(
+                demoMode,
                 &demoMode,
                 &usbScanResult,
                 &usbConnection,
@@ -533,6 +590,7 @@ int main (void) {
 }
 /***************************** Private functions *****************************/
 
+/** @fn isUsbDevicePresent */
 static bool isUsbDevicePresent(
     const SUsbScanResult &scanResult,
     const SUsbDeviceInfo &deviceInfo
@@ -553,7 +611,9 @@ static bool isUsbDevicePresent(
 
     return isPresent;
 }
+/*----------------------------------------------------------------------------*/
 
+/** @fn formatUsbConnectionStatus */
 static std::string formatUsbConnectionStatus(
     const SUsbScanResult &scanResult,
     const SUsbConnection &connection
@@ -580,7 +640,9 @@ static std::string formatUsbConnectionStatus(
 
     return status;
 }
+/*----------------------------------------------------------------------------*/
 
+/** @fn formatUsbConnectionError */
 static std::string formatUsbConnectionError(
     const char *operation,
     const SUsbConnectionResult &result
@@ -591,7 +653,9 @@ static std::string formatUsbConnectionError(
     status += result.errorMessage;
     return status;
 }
+/*----------------------------------------------------------------------------*/
 
+/** @fn formatAcquisitionError */
 static std::string formatAcquisitionError(
     const EAcquisitionOperation operation,
     const EUsbTransferStatus transferStatus
@@ -638,8 +702,96 @@ static std::string formatAcquisitionError(
 
     return status;
 }
+/*----------------------------------------------------------------------------*/
 
+/** @fn handleAcquisitionFault */
+static void handleAcquisitionFault(
+    SAcquisitionLoop *acquisitionLoop,
+    SUsbConnection *connection,
+    SUsbDeviceInfo *connectedDevice,
+    bool *acquisitionRunning,
+    bool *deviceWasDisconnected,
+    std::string *deviceStatus
+) {
+    const EAcquisitionState acquisitionState =
+        acquisitionLoop->status.state.load();
+
+    if (
+        *acquisitionRunning &&
+        ((acquisitionState == EAcquisitionState::eDeviceLost) ||
+         (acquisitionState == EAcquisitionState::eFailed))
+    ) {
+        const std::string acquisitionError = formatAcquisitionError(
+            acquisitionLoop->status.failedOperation.load(),
+            acquisitionLoop->status.lastTransferStatus.load()
+        );
+
+        oscilloscope::capture::joinFinishedAcquisitionLoop(acquisitionLoop);
+        *acquisitionRunning = false;
+        if (acquisitionState == EAcquisitionState::eDeviceLost) {
+            oscilloscope::usb::disconnectFromDevice(connection);
+            *connectedDevice = EMPTY_DEVICE_INFO;
+            *deviceWasDisconnected = true;
+            *deviceStatus = "Device disconnected: " + acquisitionError;
+        }
+        else {
+            *deviceStatus = "Acquisition stopped: " + acquisitionError;
+        }
+    }
+}
+/*----------------------------------------------------------------------------*/
+
+/** @fn pollUsbPresence */
+static void pollUsbPresence(
+    const bool demoMode,
+    const bool acquisitionRunning,
+    SUsbScanResult *usbScanResult,
+    SUsbConnection *connection,
+    SUsbDeviceInfo *connectedDevice,
+    bool *deviceWasDisconnected,
+    uint32_t *nextPresenceCheck,
+    std::string *deviceStatus
+) {
+    const uint32_t currentTicks = SDL_GetTicks();
+
+    if (
+        !demoMode &&
+        !acquisitionRunning &&
+        (static_cast<int32_t>(currentTicks - *nextPresenceCheck) >= 0)
+    ) {
+        *usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
+        *nextPresenceCheck = currentTicks + USB_PRESENCE_INTERVAL_MS;
+
+        if (
+            connection->isConnected &&
+            (usbScanResult->status == EScanStatus::eSuccess) &&
+            !isUsbDevicePresent(*usbScanResult, *connectedDevice)
+        ) {
+            oscilloscope::usb::disconnectFromDevice(connection);
+            *connectedDevice = EMPTY_DEVICE_INFO;
+            *deviceWasDisconnected = true;
+            *deviceStatus = "Device disconnected";
+        }
+        else if (
+            !connection->isConnected &&
+            (!usbScanResult->devices.empty() ||
+             !*deviceWasDisconnected)
+        ) {
+            if (!usbScanResult->devices.empty()) {
+                *deviceWasDisconnected = false;
+            }
+            *deviceStatus = formatUsbConnectionStatus(
+                *usbScanResult,
+                *connection
+            );
+        }
+    }
+}
+/*----------------------------------------------------------------------------*/
+
+/** @fn updateDemoMode */
 static void updateDemoMode(
+    const bool demoModeEnabled,
     bool *demoMode,
     SUsbScanResult *usbScanResult,
     SUsbConnection *connection,
@@ -649,7 +801,7 @@ static void updateDemoMode(
 ) {
     bool updateStatus = true;
 
-    *demoMode = !*demoMode;
+    *demoMode = demoModeEnabled;
 
     if (*demoMode) {
         if (connection->isConnected) {
@@ -657,7 +809,7 @@ static void updateDemoMode(
             const SUsbConnectionResult disconnectResult =
                 oscilloscope::usb::disconnectFromDevice(connection);
 
-            *connectedDevice = {0U, 0U, 0U, 0U, NULL};
+            *connectedDevice = EMPTY_DEVICE_INFO;
             if (!disconnectResult.errorMessage.empty()) {
                 *deviceStatus = formatUsbConnectionError(
                     "Disconnect",
@@ -675,9 +827,14 @@ static void updateDemoMode(
         *deviceStatus = formatUsbConnectionStatus(*usbScanResult, *connection);
     }
 }
+/*----------------------------------------------------------------------------*/
 
-static void drawOscilloscopeGrid(ImDrawList *drawList, const ImVec2 &position,
-    const ImVec2 &size) {
+/** @fn drawOscilloscopeGrid */
+static void drawOscilloscopeGrid(
+    ImDrawList *drawList,
+    const ImVec2 &position,
+    const ImVec2 &size
+) {
     const ImU32 majorColor = IM_COL32(42, 75, 94, 255);
     const ImU32 minorColor = IM_COL32(25, 46, 60, 255);
     const int divisionsX = 10;
@@ -701,4 +858,4 @@ static void drawOscilloscopeGrid(ImDrawList *drawList, const ImVec2 &position,
         );
     }
 }
-/*****************************************************************************/
+/******************************************************************************/

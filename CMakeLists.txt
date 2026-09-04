@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(Oscilloscope VERSION 0.2.3 LANGUAGES CXX C)
+project(Oscilloscope VERSION 0.2.4 LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,7 +62,7 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
     message(STATUS ">>> Linux")
 endif()
 
-add_executable(${APP_NAME} ${SOURCES_LIST})
+add_executable(${APP_NAME} ${SOURCES_LIST} ${HEADERS_LIST})
 
 add_custom_command(
     TARGET ${APP_NAME}
@@ -76,6 +76,7 @@ add_custom_command(
 target_include_directories(${APP_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/capture
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )
@@ -86,4 +87,8 @@ target_link_libraries(${APP_NAME} PRIVATE
     PkgConfig::LIBUSB
     Threads::Threads
 )
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(${APP_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 

@@ -194,6 +194,22 @@ Records key decisions, structural changes, and completed development stages.
   disconnected status remains visible, and active acquisition behavior is
   unchanged.
 
+### Code review and cleanup
+
+- Reviewed the non-Qt codebase against the project style rules, DRY, and KISS.
+- Merged the duplicate device-matching helpers into a single `findDevice`.
+- Extracted a `retryWhileTimeout` helper shared by the bulk and control
+  transfer wrappers.
+- Shared a single `fileExists` helper between the USB and firmware modules.
+- Factored acquisition-fault handling and USB presence polling out of the
+  main loop into dedicated helpers.
+- Added full Doxygen descriptions to the application entry-point functions.
+- Enabled `-Wall -Wextra -Wpedantic` for GCC/Clang; the build is warning-free
+  and behavior is unchanged.
+- Noted the sole visible change: before firmware upload the status line now
+  shows the enumerated bootloader's model name, which correctly reflects the
+  unprogrammed device.
+
 ### Next USB tasks
 
 - Decode capture-state responses and acquired sample packets.
