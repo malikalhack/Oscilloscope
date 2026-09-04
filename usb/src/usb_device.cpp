@@ -143,6 +143,21 @@ static EUsbTransferStatus classifyBulkTransferResult(int transferResult);
  */
 static EUsbTransferStatus classifyControlTransferResult(int transferResult);
 
+/**
+ * @brief Builds a transfer result and validates its minimum byte count
+ * @param[in] status Status classified from the libusb return value
+ * @param[in] transferResult Raw libusb return value for error reporting
+ * @param[in] transferredBytes Number of bytes transferred
+ * @param[in] minimumLength Minimum valid transfer length
+ * @returns Complete transfer result for the public USB API
+ */
+static SUsbTransferResult makeTransferResult(
+    EUsbTransferStatus status,
+    int transferResult,
+    int transferredBytes,
+    int minimumLength
+);
+
 /********************* Application Programming Interface **********************/
 
 /** @fn enumerateSupportedDevices */
@@ -449,22 +464,12 @@ SUsbTransferResult bulkWrite(
         );
     }
 
-    result.transferredBytes = transferredBytes;
-    result.status = classifyBulkTransferResult(transferResult);
-    if (
-        (result.status == EUsbTransferStatus::eSuccess) &&
-        (transferredBytes != length)
-    ) {
-        result.status = EUsbTransferStatus::eShortTransfer;
-    }
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        if (result.status == EUsbTransferStatus::eShortTransfer) {
-            result.errorMessage = "short transfer";
-        }
-        else {
-            result.errorMessage = libusb_error_name(transferResult);
-        }
-    }
+    result = makeTransferResult(
+        classifyBulkTransferResult(transferResult),
+        transferResult,
+        transferredBytes,
+        length
+    );
 
     return result;
 }
@@ -499,22 +504,12 @@ SUsbTransferResult bulkRead(
         );
     }
 
-    result.transferredBytes = transferredBytes;
-    result.status = classifyBulkTransferResult(transferResult);
-    if (
-        (result.status == EUsbTransferStatus::eSuccess) &&
-        (transferredBytes < minimumLength)
-    ) {
-        result.status = EUsbTransferStatus::eShortTransfer;
-    }
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        if (result.status == EUsbTransferStatus::eShortTransfer) {
-            result.errorMessage = "short transfer";
-        }
-        else {
-            result.errorMessage = libusb_error_name(transferResult);
-        }
-    }
+    result = makeTransferResult(
+        classifyBulkTransferResult(transferResult),
+        transferResult,
+        transferredBytes,
+        minimumLength
+    );
 
     return result;
 }
@@ -552,22 +547,12 @@ SUsbTransferResult controlWrite(
         );
     }
 
-    result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
-    result.status = classifyControlTransferResult(transferResult);
-    if (
-        (result.status == EUsbTransferStatus::eSuccess) &&
-        (result.transferredBytes != static_cast<int>(length))
-    ) {
-        result.status = EUsbTransferStatus::eShortTransfer;
-    }
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        if (result.status == EUsbTransferStatus::eShortTransfer) {
-            result.errorMessage = "short transfer";
-        }
-        else {
-            result.errorMessage = libusb_error_name(transferResult);
-        }
-    }
+    result = makeTransferResult(
+        classifyControlTransferResult(transferResult),
+        transferResult,
+        (transferResult >= 0) ? transferResult : 0,
+        static_cast<int>(length)
+    );
 
     return result;
 }
@@ -606,22 +591,12 @@ SUsbTransferResult controlRead(
         );
     }
 
-    result.transferredBytes = (transferResult >= 0) ? transferResult : 0;
-    result.status = classifyControlTransferResult(transferResult);
-    if (
-        (result.status == EUsbTransferStatus::eSuccess) &&
-        (result.transferredBytes < static_cast<int>(minimumLength))
-    ) {
-        result.status = EUsbTransferStatus::eShortTransfer;
-    }
-    if (result.status != EUsbTransferStatus::eSuccess) {
-        if (result.status == EUsbTransferStatus::eShortTransfer) {
-            result.errorMessage = "short transfer";
-        }
-        else {
-            result.errorMessage = libusb_error_name(transferResult);
-        }
-    }
+    result = makeTransferResult(
+        classifyControlTransferResult(transferResult),
+        transferResult,
+        (transferResult >= 0) ? transferResult : 0,
+        static_cast<int>(minimumLength)
+    );
 
     return result;
 }
@@ -792,6 +767,34 @@ static EUsbTransferStatus classifyControlTransferResult(
     }
     else if (transferResult == LIBUSB_ERROR_NO_DEVICE) {
         result = EUsbTransferStatus::eNoDevice;
+    }
+
+    return result;
+}
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn makeTransferResult */
+static SUsbTransferResult makeTransferResult(
+    const EUsbTransferStatus status,
+    const int transferResult,
+    const int transferredBytes,
+    const int minimumLength
+) {
+    SUsbTransferResult result = {status, transferredBytes, ""};
+
+    if (
+        (result.status == EUsbTransferStatus::eSuccess) &&
+        (result.transferredBytes < minimumLength)
+    ) {
+        result.status = EUsbTransferStatus::eShortTransfer;
+    }
+
+    if (result.status == EUsbTransferStatus::eShortTransfer) {
+        result.errorMessage = "short transfer";
+    }
+    else if (result.status != EUsbTransferStatus::eSuccess) {
+        result.errorMessage = libusb_error_name(transferResult);
     }
 
     return result;
