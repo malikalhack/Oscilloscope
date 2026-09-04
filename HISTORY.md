@@ -226,6 +226,21 @@ Records key decisions, structural changes, and completed development stages.
   close/reset behavior, and concurrent producer-consumer operation.
 - Moved the expanded capture module into `capture/inc/` and `capture/src/`.
 
+### Hardware verification
+
+- Verified a 60-second acquisition run and 11 repeated Start/Stop cycles on a
+  physical Hantek DSO-2250 without GUI stalls or loss of the USB connection.
+- Confirmed the expected LED lifecycle: red while connected and stopped, green
+  during acquisition, and off after application shutdown.
+- Verified active USB removal: acquisition stopped without a hang and reported
+  `USB device lost while beginning command`.
+- Verified automatic device rediscovery, explicit reconnection, and successful
+  acquisition after reconnecting the instrument.
+- Verified application shutdown during acquisition without a crash, deadlock,
+  or unbounded wait.
+- No persistent recovery state or unexpected acquisition stop occurred during
+  normal operation; the Release build and FIFO test passed without warnings.
+
 ### Next USB tasks
 
 - Decode capture-state responses and acquired sample packets.
