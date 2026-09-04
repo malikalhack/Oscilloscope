@@ -25,11 +25,16 @@ path for the Hantek DSO-2250:
 - discovery and connection through libusb;
 - FX2 firmware upload and operational-device re-enumeration;
 - a Start/Stop-controlled acquisition thread that polls the bulk endpoints;
-- poll and transfer-error counters in the status line.
+- bounded recovery from USB timeouts and I/O errors;
+- safe acquisition shutdown and status reporting when the device is lost.
 
 The application starts in Live mode when a supported device is present and in
 Demo mode otherwise. Connecting prepares the device; endpoint traffic begins
-only after pressing Start and stops after pressing Stop.
+only after pressing Start and stops after pressing Stop. Transient USB errors
+are retried with a bounded delay. Repeated errors stop acquisition while
+keeping an available device connected for another Start attempt. Disconnecting
+the device during acquisition stops the worker before USB resources are
+released and reports the device loss in the status line.
 
 ## Planned Stack
 

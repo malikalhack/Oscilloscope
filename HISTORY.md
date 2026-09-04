@@ -170,8 +170,24 @@ Records key decisions, structural changes, and completed development stages.
 - Updated CMake source lists, include directories, and dependent includes for
   the new layout.
 
+### Stage 3 - USB timeout and error recovery
+
+- Reject short USB writes and responses that do not contain the minimum data
+  required by the protocol operation.
+- Stop each capture-state transaction at its first failed transfer instead of
+  issuing the remaining USB operations with invalid state.
+- Retry transient timeouts and I/O errors with bounded attempts and delays.
+- Stop acquisition immediately when libusb reports that the device was lost.
+- Join an acquisition worker before releasing a lost device's USB resources.
+- Keep a connected device available for another Start attempt after repeated
+  recoverable transfer errors.
+- Report recovery, terminal I/O errors, and device loss through application
+  states in the status line.
+- Removed the temporary poll/error counters and per-cycle stderr diagnostics.
+
 ### Next USB tasks
 
 - Decode capture-state responses and acquired sample packets.
 - Add buffering between USB reads and waveform processing.
-- Add automatic recovery for transfer errors and unexpected disconnections.
+- Verify transfer-error recovery and unexpected disconnection handling with
+  physical hardware.
