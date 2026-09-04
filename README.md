@@ -37,7 +37,8 @@ the device during acquisition stops the worker before USB resources are
 released and reports the device loss in the status line. Outside acquisition,
 the application periodically checks device presence: unplugging a connected
 device closes the stale connection, and plugging it back in updates the status
-without requiring a manual rescan. Reconnecting remains an explicit action.
+automatically. The disconnect status remains visible while the device is
+absent. Reconnecting remains an explicit action.
 
 ## Planned Stack
 

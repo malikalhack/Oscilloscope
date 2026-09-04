@@ -188,6 +188,8 @@ Records key decisions, structural changes, and completed development stages.
   stops acquisition and closes the connection.
 - Added periodic presence checks outside acquisition so an unplugged connected
   device is detected and a returned device appears without a manual rescan.
+- Removed the redundant manual rescan control and kept the device-disconnected
+  status visible until the device returns.
 
 ### Next USB tasks
 
