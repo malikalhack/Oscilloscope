@@ -184,10 +184,14 @@ Records key decisions, structural changes, and completed development stages.
 - Report recovery, terminal I/O errors, and device loss through application
   states in the status line.
 - Removed the temporary poll/error counters and per-cycle stderr diagnostics.
+- Verified on physical hardware that unplugging the device during acquisition
+  stops acquisition and closes the connection.
+- Added periodic presence checks outside acquisition so an unplugged connected
+  device is detected and a returned device appears without a manual rescan.
 
 ### Next USB tasks
 
 - Decode capture-state responses and acquired sample packets.
 - Add buffering between USB reads and waveform processing.
-- Verify transfer-error recovery and unexpected disconnection handling with
-  physical hardware.
+- Verify idle disconnection detection, automatic return detection, and
+  transfer-error recovery with physical hardware.

@@ -34,7 +34,10 @@ only after pressing Start and stops after pressing Stop. Transient USB errors
 are retried with a bounded delay. Repeated errors stop acquisition while
 keeping an available device connected for another Start attempt. Disconnecting
 the device during acquisition stops the worker before USB resources are
-released and reports the device loss in the status line.
+released and reports the device loss in the status line. Outside acquisition,
+the application periodically checks device presence: unplugging a connected
+device closes the stale connection, and plugging it back in updates the status
+without requiring a manual rescan. Reconnecting remains an explicit action.
 
 ## Planned Stack
 
