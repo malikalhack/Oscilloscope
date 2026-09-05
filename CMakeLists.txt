@@ -72,6 +72,10 @@ set(WAVEFORM_PARSER_TEST_SOURCES_LIST
     tests/waveform_parser_test.cpp
 )
 
+set(WAVEFORM_RING_BUFFER_TEST_SOURCES_LIST
+    tests/waveform_ring_buffer_test.cpp
+)
+
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
     message(STATUS ">>> Debug build")
     add_compile_definitions(_DEBUG)
@@ -138,6 +142,17 @@ if(BUILD_TESTING)
     enable_project_warnings(waveform_parser_tests)
     add_test(NAME waveform_parser COMMAND waveform_parser_tests)
     add_dependencies(${APP_NAME} waveform_parser_tests)
+    add_executable(waveform_ring_buffer_tests
+        ${WAVEFORM_RING_BUFFER_TEST_SOURCES_LIST}
+        capture/src/waveform_ring_buffer.cpp
+    )
+    target_include_directories(waveform_ring_buffer_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/capture/inc
+    )
+    target_link_libraries(waveform_ring_buffer_tests PRIVATE Threads::Threads)
+    enable_project_warnings(waveform_ring_buffer_tests)
+    add_test(NAME waveform_ring_buffer COMMAND waveform_ring_buffer_tests)
+    add_dependencies(${APP_NAME} waveform_ring_buffer_tests)
     add_test(
         NAME release_updater
         COMMAND ${Python3_EXECUTABLE}
