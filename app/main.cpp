@@ -695,6 +695,18 @@ static std::string formatAcquisitionError(
         case EAcquisitionOperation::eCaptureStateResponse:
             status += " while reading capture state";
             break;
+        case EAcquisitionOperation::eChannelDataCommand:
+            status += " while requesting channel data";
+            break;
+        case EAcquisitionOperation::eChannelDataResponse:
+            status += " while reading channel data";
+            break;
+        case EAcquisitionOperation::eCaptureStartCommand:
+            status += " while starting capture";
+            break;
+        case EAcquisitionOperation::eTriggerEnabledCommand:
+            status += " while enabling trigger";
+            break;
         case EAcquisitionOperation::eNone:
         default:
             break;

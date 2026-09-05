@@ -19,7 +19,9 @@ The application currently provides:
 
 The DSO-2250 capture-state response and its two-channel interleaved sample
 format are decoded by deterministic, hardware-independent parser functions.
-Waveform reads and live waveform rendering are not yet implemented.
+After a completed capture, the acquisition worker reads its full 32,768-sample
+two-channel buffer in 512-byte USB packets and starts the next capture. Live
+waveform rendering is not yet implemented.
 
 ## Planned Stack
 

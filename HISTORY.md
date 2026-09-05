@@ -27,6 +27,19 @@ Records key decisions, structural changes, and completed development stages.
 - Added deterministic CTest coverage for state parsing, trigger decoding,
   channel order, and malformed capture buffers.
 
+### Stage 4 - Complete DSO-2250 capture reads
+
+- Start acquisition with the legacy capture-start and trigger-enable command
+  sequence before capture-state polling begins.
+- On a complete DSO-2250 capture-state response, read the fixed two-channel
+  32,768-sample buffer as 128 consecutive 512-byte bulk packets.
+- Stop incomplete waveform publication at the first failed packet and preserve
+  the existing bounded recovery and device-loss behavior.
+- Restart capture and re-enable the trigger only after a complete buffer was
+  read and queued for processing.
+- Added acquisition-status diagnostics for channel-data, capture-start, and
+  trigger-enable failures.
+
 ### Code style - Immutable object naming
 
 - Reserved `UPPER_CASE` for preprocessor macros.

@@ -51,7 +51,11 @@ enum class EAcquisitionOperation {
     eSpeedBeforeCommand,   /**< Speed control read before command write */
     eCaptureStateCommand,  /**< Capture-state bulk command write */
     eSpeedBeforeResponse,  /**< Speed control read before response read */
-    eCaptureStateResponse  /**< Capture-state bulk response read */
+    eCaptureStateResponse, /**< Capture-state bulk response read */
+    eChannelDataCommand,   /**< Channel-data bulk command write */
+    eChannelDataResponse,  /**< Channel-data bulk response read */
+    eCaptureStartCommand,  /**< Capture-start bulk command write */
+    eTriggerEnabledCommand /**< Trigger-enable bulk command write */
 };
 
 /** @brief Acquisition state safe to read from any thread */
