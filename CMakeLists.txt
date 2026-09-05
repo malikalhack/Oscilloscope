@@ -46,6 +46,7 @@ set(SOURCES_LIST
     capture/src/acquisition_loop.cpp
     capture/src/raw_packet_queue.cpp
     capture/src/waveform_parser.cpp
+    capture/src/waveform_ring_buffer.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -60,6 +61,7 @@ set(HEADERS_LIST
     capture/inc/acquisition_loop.h
     capture/inc/raw_packet_queue.h
     capture/inc/waveform_parser.h
+    capture/inc/waveform_ring_buffer.h
 )
 
 set(RAW_PACKET_QUEUE_TEST_SOURCES_LIST
