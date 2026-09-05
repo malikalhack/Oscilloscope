@@ -7,6 +7,28 @@ Records key decisions, structural changes, and completed development stages.
 
 ## 2026-09-05
 
+### Stage 4 - Data ring buffer
+
+- Added `WaveformRingBuffer`, a bounded thread-safe buffer of decoded
+  two-channel waveform frames connecting the capture processing thread to
+  render consumption.
+- The producer side never blocks: pushing a frame while full discards the
+  oldest buffered frame and increments a thread-safe dropped-frame count.
+- The consumer side is non-blocking as well: `popLatest()` drains any
+  backlog and returns only the freshest frame, matching a real-time render
+  loop that must never wait on stale or absent data.
+- Replaced the single-slot mutex-protected waveform snapshot in
+  `SAcquisitionLoop` with a `WaveformRingBuffer` member; `getLatestWaveform()`
+  keeps its existing signature and now delegates to `popLatest()`.
+- Wired the render loop to call `getLatestWaveform()` once per frame and
+  surface the decoded sample count and trigger point on the status line,
+  proving the capture-to-render path end to end; plotting the waveform shape
+  remains a separate future task.
+- Added deterministic CTest coverage for latest-frame semantics, overflow
+  drop-oldest with its counter, reset/reopen, an empty buffer, and concurrent
+  producer/consumer operation.
+- Verified warning-free Debug and Release builds and a full CTest pass.
+
 ### Stage 4 preparation - Release metadata coverage
 
 - Registered standalone C++ test sources in dedicated CMake source lists.
