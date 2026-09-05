@@ -307,7 +307,7 @@ int main (void) {
     bool deviceWasDisconnected = false;
     bool channelEnabled[] = {true, true};
     int timebase = 6;
-    int voltsPerDivision[] = {2, 2};
+    int voltsPerDivision[] = {7, 7};
     SUsbScanResult usbScanResult =
         oscilloscope::usb::enumerateSupportedDevices();
     bool demoMode =
