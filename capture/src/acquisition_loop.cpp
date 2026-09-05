@@ -172,6 +172,13 @@ void startAcquisitionLoop(
         loop->status.lastTransferStatus.store(
             usb::EUsbTransferStatus::eSuccess
         );
+        {
+            std::lock_guard<std::mutex> lock(loop->waveformMutex);
+
+            loop->latestWaveform = {};
+            loop->latestTriggerPoint = 0U;
+            loop->hasWaveform = false;
+        }
         loop->processingThread = std::thread(processRawPackets, loop);
         loop->workerThread = std::thread(pollCaptureState, loop, connection);
     }
@@ -201,6 +208,31 @@ bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop) {
 
     return joined;
 }
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn getLatestWaveform */
+bool getLatestWaveform(
+    const SAcquisitionLoop *loop,
+    SWaveformSamples *waveform,
+    uint32_t *triggerPoint
+) {
+    bool result = false;
+
+    if ((loop != NULL) && (waveform != NULL) && (triggerPoint != NULL)) {
+        std::lock_guard<std::mutex> lock(loop->waveformMutex);
+
+        if (loop->hasWaveform) {
+            *waveform = loop->latestWaveform;
+            *triggerPoint = loop->latestTriggerPoint;
+            result = true;
+        }
+    }
+
+    return result;
+}
+
+/*----------------------------------------------------------------------------*/
 
 /** @fn stopAcquisitionLoop */
 void stopAcquisitionLoop(SAcquisitionLoop *loop) {
@@ -270,7 +302,8 @@ static void pollCaptureState(
                     ) {
                         loop->rawPacketQueue.push(
                             captureData.data(),
-                            captureData.size()
+                            captureData.size(),
+                            captureState.triggerPoint
                         );
                         transferResult = restartCapture(
                             connection,
@@ -323,8 +356,23 @@ static void pollCaptureState(
 /** @fn processRawPackets */
 static void processRawPackets(SAcquisitionLoop *loop) {
     SRawUsbPacket packet;
+    SWaveformSamples waveform;
 
     while (loop->rawPacketQueue.waitPop(&packet)) {
+        if (
+            parseInterleavedWaveformSamples(
+                packet.payload.data(),
+                packet.validLength,
+                kCaptureSampleCount,
+                &waveform
+            )
+        ) {
+            std::lock_guard<std::mutex> lock(loop->waveformMutex);
+
+            loop->latestWaveform = waveform;
+            loop->latestTriggerPoint = packet.triggerPoint;
+            loop->hasWaveform = true;
+        }
     }
 }
 

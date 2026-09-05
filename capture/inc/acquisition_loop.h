@@ -25,10 +25,12 @@
 
 /******************************* Included files ******************************/
 #include <atomic>
+#include <mutex>
 #include <thread>
 
 #include "raw_packet_queue.h"
 #include "usb_device.h"
+#include "waveform_parser.h"
 
 /********************************* Definitions ********************************/
 
@@ -80,6 +82,10 @@ struct SAcquisitionLoop {
     RawPacketQueue rawPacketQueue{8U};      /**< Bounded raw response FIFO */
     std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
     SAcquisitionStatus status;              /**< Shared poll status */
+    mutable std::mutex waveformMutex;       /**< Guards the latest waveform */
+    SWaveformSamples latestWaveform{};      /**< Most recently decoded frame */
+    uint32_t latestTriggerPoint{0U};        /**< Trigger point for latest frame */
+    bool hasWaveform{false};                /**< True after first decoded frame */
 };
 
 /********************* Application Programming Interface *********************/
@@ -109,6 +115,19 @@ void stopAcquisitionLoop(SAcquisitionLoop *loop);
  * @returns True when a terminal worker was joined
  */
 bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop);
+
+/**
+ * @brief Copies the most recently decoded waveform frame
+ * @param[in] loop Acquisition loop that owns the latest frame
+ * @param[out] waveform Destination for waveform samples
+ * @param[out] triggerPoint Destination for the waveform trigger position
+ * @returns True when a decoded waveform frame is available
+ */
+bool getLatestWaveform(
+    const SAcquisitionLoop *loop,
+    SWaveformSamples *waveform,
+    uint32_t *triggerPoint
+);
 
 } // namespace capture
 } // namespace oscilloscope

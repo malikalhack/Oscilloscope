@@ -29,6 +29,7 @@ libusb for communication with supported instruments.
 - bounded USB error recovery and safe device-loss handling.
 - deterministic DSO-2250 capture-state and two-channel sample parsing.
 - complete 32,768-sample two-channel capture reads after a successful trigger.
+- thread-safe publication of the latest decoded waveform and trigger point.
 
 ## Architecture
 
@@ -78,7 +79,6 @@ complete installation, build, and run instructions.
 
 ## Planned work
 
-The next tasks are publishing decoded captures and displaying live waveforms.
-Instrument controls, broader
+The next task is displaying live waveforms. Instrument controls, broader
 recovery behavior, and persistent configuration follow in later milestones.
 

@@ -40,6 +40,17 @@ Records key decisions, structural changes, and completed development stages.
 - Added acquisition-status diagnostics for channel-data, capture-start, and
   trigger-enable failures.
 
+### Stage 4 - Decoded waveform publication
+
+- Preserved the decoded capture trigger point alongside its raw waveform bytes
+  while the frame passes through the FIFO.
+- Decode complete queued DSO-2250 frames in the processing worker instead of
+  interpreting raw channel bytes as capture-state data.
+- Added a mutex-protected latest-waveform snapshot and `getLatestWaveform()`
+  API for the future renderer.
+- Extended FIFO tests to verify trigger-point metadata is retained with each
+  packet.
+
 ### Code style - Immutable object naming
 
 - Reserved `UPPER_CASE` for preprocessor macros.

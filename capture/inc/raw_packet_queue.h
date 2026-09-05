@@ -42,7 +42,8 @@ static const size_t kRawUsbPacketMaxSize = 65536U;
 /** @brief Owns one raw USB response and its valid byte count */
 struct SRawUsbPacket {
     std::array<uint8_t, kRawUsbPacketMaxSize> payload; /**< Raw bytes */
-    size_t validLength; /**< Number of valid bytes in payload */
+    size_t validLength;     /**< Number of valid bytes in payload */
+    uint32_t triggerPoint;  /**< Trigger position associated with payload */
 };
 
 /** @brief Provides a bounded thread-safe FIFO for raw USB responses */
@@ -58,10 +59,15 @@ public:
      * @brief Copies a raw response into the queue without blocking
      * @param[in] data Raw response bytes
      * @param[in] length Number of bytes to copy
+     * @param[in] triggerPoint Trigger position associated with the response
      * @returns True when the packet was accepted
      * @note When full, the oldest packet is discarded before insertion.
      */
-    bool push(const uint8_t *data, size_t length);
+    bool push(
+        const uint8_t *data,
+        size_t length,
+        uint32_t triggerPoint = 0U
+    );
 
     /**
      * @brief Waits for and removes the oldest retained packet
