@@ -149,13 +149,7 @@ void startAcquisitionLoop(
         loop->status.lastTransferStatus.store(
             usb::EUsbTransferStatus::eSuccess
         );
-        {
-            std::lock_guard<std::mutex> lock(loop->waveformMutex);
-
-            loop->latestWaveform = {};
-            loop->latestTriggerPoint = 0U;
-            loop->hasWaveform = false;
-        }
+        loop->waveformRingBuffer.reset();
         loop->processingThread = std::thread(processRawPackets, loop);
         loop->workerThread = std::thread(pollCaptureState, loop, connection);
     }
@@ -195,15 +189,17 @@ bool getLatestWaveform(
     uint32_t *triggerPoint
 ) {
     bool result = false;
+    SWaveformFrame frame;
 
-    if ((loop != NULL) && (waveform != NULL) && (triggerPoint != NULL)) {
-        std::lock_guard<std::mutex> lock(loop->waveformMutex);
-
-        if (loop->hasWaveform) {
-            *waveform = loop->latestWaveform;
-            *triggerPoint = loop->latestTriggerPoint;
-            result = true;
-        }
+    if (
+        (loop != NULL) &&
+        (waveform != NULL) &&
+        (triggerPoint != NULL) &&
+        loop->waveformRingBuffer.popLatest(&frame)
+    ) {
+        *waveform = frame.samples;
+        *triggerPoint = frame.triggerPoint;
+        result = true;
     }
 
     return result;
@@ -352,11 +348,7 @@ static void processRawPackets(SAcquisitionLoop *loop) {
                 &waveform
             )
         ) {
-            std::lock_guard<std::mutex> lock(loop->waveformMutex);
-
-            loop->latestWaveform = waveform;
-            loop->latestTriggerPoint = packet.triggerPoint;
-            loop->hasWaveform = true;
+            loop->waveformRingBuffer.push(waveform, packet.triggerPoint);
         }
     }
 }

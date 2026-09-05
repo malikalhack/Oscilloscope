@@ -25,12 +25,12 @@
 
 /******************************* Included files ******************************/
 #include <atomic>
-#include <mutex>
 #include <thread>
 
 #include "raw_packet_queue.h"
 #include "usb_device.h"
 #include "waveform_parser.h"
+#include "waveform_ring_buffer.h"
 
 /********************************* Definitions ********************************/
 
@@ -82,11 +82,10 @@ struct SAcquisitionLoop {
     RawPacketQueue rawPacketQueue{8U};      /**< Bounded raw response FIFO */
     SAcquisitionStatus status;              /**< Shared poll status */
     usb::SUsbCaptureProtocol captureProtocol{}; /**< Active capture format */
-    mutable std::mutex waveformMutex;       /**< Guards the latest waveform */
-    SWaveformSamples latestWaveform{};      /**< Most recently decoded frame */
-    uint32_t latestTriggerPoint{0U};        /**< Trigger point for latest frame */
+    mutable WaveformRingBuffer waveformRingBuffer{
+        kWaveformRingBufferCapacity
+    }; /**< Decoded frames awaiting render consumption */
     std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
-    bool hasWaveform{false};                /**< True after first decoded frame */
 };
 
 /********************* Application Programming Interface *********************/
