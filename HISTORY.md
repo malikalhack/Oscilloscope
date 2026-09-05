@@ -60,6 +60,21 @@ Records key decisions, structural changes, and completed development stages.
 - Validate profile packetisation and fixed capture-storage bounds before
   requesting sample data.
 
+### Stage 4 - Hardware verification
+
+- Verified a 60-second acquisition on the initial Hantek DSO-2250 profile.
+- Verified six 10-second Start/Stop cycles: the UI stayed responsive and the
+  connected device was ready for every subsequent Start.
+- Verified active USB removal: acquisition stopped without a crash, deadlock,
+  or unbounded wait and reported the lost device while beginning a command.
+- Verified automatic rediscovery, explicit reconnection, and a subsequent
+  successful acquisition after the device was reattached.
+- Verified application shutdown during acquisition without a crash, deadlock,
+  or unbounded wait; the instrument returned to its connected idle LED state,
+  then turned off after application exit.
+- Verified the Release build without warnings. Normal acquisition showed no
+  persistent recovery state or unexpected acquisition stop.
+
 ### Code style - Immutable object naming
 
 - Reserved `UPPER_CASE` for preprocessor macros.

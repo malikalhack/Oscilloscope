@@ -12,19 +12,19 @@ The application currently provides:
 
 - an SDL2, Dear ImGui, and OpenGL user interface;
 - Demo and Live operating modes;
-- Hantek DSO-2250 discovery and connection through libusb;
+- supported Hantek device discovery and connection through libusb;
 - FX2 firmware upload and operational-device re-enumeration;
 - Start/Stop-controlled endpoint polling;
 - bounded USB error recovery and safe device-loss handling.
 
-The DSO-2250 capture-state response and its two-channel interleaved sample
-format are decoded by deterministic, hardware-independent parser functions.
-After a completed capture, the acquisition worker reads its full 32768-sample
-two-channel buffer in 512-byte USB packets and starts the next capture. Live
-waveform rendering is not yet implemented. A processing worker decodes complete
-captures and publishes the latest frame and trigger point safely for rendering.
-Each supported-device entry supplies its capture protocol, including endpoints,
-packet size, commands, channel layout, sample count, and completion state.
+Capture-state responses and sample buffers are decoded by deterministic,
+hardware-independent parser functions. Each supported-device entry supplies its
+capture protocol, including endpoints, packet size, commands, channel layout,
+sample count, and completion state. After a completed capture, the acquisition
+worker reads and queues the complete profile-defined sample buffer, then starts
+the next capture. Live waveform rendering is not yet implemented. A processing
+worker decodes complete captures and publishes the latest frame and trigger
+point safely for rendering.
 
 ## Planned Stack
 
@@ -213,9 +213,8 @@ CI can update only the version metadata by passing `--skip-build`.
 
 ## Next Steps
 
-1. Decode capture-state responses and acquired sample packets.
-2. Render live and demo waveforms on the display grid.
-3. Implement the two-channel model, timebase, and instrument controls.
+1. Render live and demo waveforms on the display grid.
+2. Implement the two-channel model, timebase, and instrument controls.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.
