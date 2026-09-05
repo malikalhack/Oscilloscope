@@ -116,7 +116,7 @@ class Updater:
             cmake_content = opened_file.read()
 
         source_files = []
-        for list_name in ("SOURCES_LIST", "HEADERS_LIST"):
+        for list_name in ("SOURCES_LIST", "HEADERS_LIST", "TEST_SOURCES_LIST"):
             match = re.search(
                 r"set\s*\(\s*{}\s*(.*?)\)".format(list_name),
                 cmake_content,

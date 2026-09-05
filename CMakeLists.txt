@@ -60,6 +60,10 @@ set(HEADERS_LIST
     capture/inc/raw_packet_queue.h
 )
 
+set(TEST_SOURCES_LIST
+    tests/raw_packet_queue_test.cpp
+)
+
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
     message(STATUS ">>> Debug build")
     add_compile_definitions(_DEBUG)
@@ -103,8 +107,10 @@ enable_project_warnings(${APP_NAME})
 include(CTest)
 
 if(BUILD_TESTING)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
     add_executable(raw_packet_queue_tests
-        tests/raw_packet_queue_test.cpp
+        ${TEST_SOURCES_LIST}
         capture/src/raw_packet_queue.cpp
     )
     target_include_directories(raw_packet_queue_tests PRIVATE
@@ -113,5 +119,12 @@ if(BUILD_TESTING)
     target_link_libraries(raw_packet_queue_tests PRIVATE Threads::Threads)
     enable_project_warnings(raw_packet_queue_tests)
     add_test(NAME raw_packet_queue COMMAND raw_packet_queue_tests)
+    add_dependencies(${APP_NAME} raw_packet_queue_tests)
+    add_test(
+        NAME release_updater
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_updater_test.py
+            ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 endif()
 

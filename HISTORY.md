@@ -5,6 +5,19 @@ Records key decisions, structural changes, and completed development stages.
 
 ---
 
+## 2026-09-05
+
+### Stage 4 preparation - Release metadata coverage
+
+- Registered standalone C++ test sources in `TEST_SOURCES_LIST` in the CMake
+  build configuration.
+- Extended the release updater to discover C++ test sources and update their
+  `@version` metadata together with production sources.
+- Added deterministic CTest coverage that runs the updater in an isolated copy
+  of the project and verifies test-source version updates.
+- Corrected the documented DSO-2250 endpoint configuration to interface 0,
+  alternate setting 1.
+
 ## 2026-08-27
 
 ### Project inception

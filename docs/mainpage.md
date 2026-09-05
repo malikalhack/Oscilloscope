@@ -52,7 +52,7 @@ multiple identical instruments to be distinguished.
 
 An uninitialized DSO-2250 appears as `04b4:2250`. The application uploads the
 externally supplied FX2 firmware, waits for the instrument to re-enumerate as
-`04b5:2250`, and opens its bulk endpoints on interface 0, alternate setting 0.
+`04b5:2250`, and opens its bulk endpoints on interface 0, alternate setting 1.
 The official installer prohibits unauthorized redistribution, so the firmware
 is excluded until separate redistribution rights can be confirmed. A repaired
 extractor in `tools/dsoextractfw.c` allows owners to generate the required HEX

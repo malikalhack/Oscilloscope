@@ -194,6 +194,7 @@ The script synchronizes:
 
 - the CMake project version in `CMakeLists.txt`;
 - the `@version` field in `app/main.cpp`;
+- the `@version` field in C++ test sources registered in `TEST_SOURCES_LIST`;
 - the `VERSION_MAJOR`, `VERSION_MINOR`, and `VERSION_PATCH` macros;
 - the embedded `FileVersion` and `ProductVersion` strings;
 - the version shown in `README.md`, `docs/mainpage.md`, and `docs/Doxyfile`.
