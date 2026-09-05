@@ -27,6 +27,10 @@ libusb for communication with supported instruments.
 - bounded buffering between USB reads and packet processing;
 - capture-state polling through vendor control requests and bulk endpoints;
 - bounded USB error recovery and safe device-loss handling.
+- deterministic profile-driven capture-state and sample parsing.
+- complete profile-defined capture reads after a successful trigger.
+- thread-safe publication of the latest decoded waveform and trigger point.
+- a per-device capture profile selected from the supported-device table.
 
 ## Architecture
 
@@ -76,7 +80,6 @@ complete installation, build, and run instructions.
 
 ## Planned work
 
-The next tasks are decoding capture responses and sample packets, reading
-waveform data, and displaying live waveforms. Instrument controls, broader
+The next task is displaying live waveforms. Instrument controls, broader
 recovery behavior, and persistent configuration follow in later milestones.
 

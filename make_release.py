@@ -116,15 +116,12 @@ class Updater:
             cmake_content = opened_file.read()
 
         source_files = []
-        for list_name in ("SOURCES_LIST", "HEADERS_LIST"):
-            match = re.search(
-                r"set\s*\(\s*{}\s*(.*?)\)".format(list_name),
-                cmake_content,
-                re.DOTALL,
-            )
-            if match is None:
-                continue
-
+        matches = re.finditer(
+            r"set\s*\(\s*\w*(?:SOURCES|HEADERS)_LIST\s*(.*?)\)",
+            cmake_content,
+            re.DOTALL,
+        )
+        for match in matches:
             for line in match.group(1).splitlines():
                 path = line.split("#", 1)[0].strip()
                 if path and "${" not in path and isfile(path):

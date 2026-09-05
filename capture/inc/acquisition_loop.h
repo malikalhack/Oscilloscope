@@ -25,10 +25,12 @@
 
 /******************************* Included files ******************************/
 #include <atomic>
+#include <mutex>
 #include <thread>
 
 #include "raw_packet_queue.h"
 #include "usb_device.h"
+#include "waveform_parser.h"
 
 /********************************* Definitions ********************************/
 
@@ -51,13 +53,17 @@ enum class EAcquisitionOperation {
     eSpeedBeforeCommand,   /**< Speed control read before command write */
     eCaptureStateCommand,  /**< Capture-state bulk command write */
     eSpeedBeforeResponse,  /**< Speed control read before response read */
-    eCaptureStateResponse  /**< Capture-state bulk response read */
+    eCaptureStateResponse, /**< Capture-state bulk response read */
+    eChannelDataCommand,   /**< Channel-data bulk command write */
+    eChannelDataResponse,  /**< Channel-data bulk response read */
+    eCaptureStartCommand,  /**< Capture-start bulk command write */
+    eTriggerEnabledCommand /**< Trigger-enable bulk command write */
 };
 
 /** @brief Acquisition state safe to read from any thread */
 struct SAcquisitionStatus {
-    std::atomic<int> lastCaptureState{-1};       /**< Last raw capture state */
     std::atomic<size_t> droppedPacketCount{0U};  /**< Queue overflow count */
+    std::atomic<int> lastCaptureState{-1};       /**< Last raw capture state */
     std::atomic<EAcquisitionState> state{
         EAcquisitionState::eStopped
     }; /**< Current worker state */
@@ -74,8 +80,13 @@ struct SAcquisitionLoop {
     std::thread workerThread;               /**< Background USB producer */
     std::thread processingThread;           /**< Background packet consumer */
     RawPacketQueue rawPacketQueue{8U};      /**< Bounded raw response FIFO */
-    std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
     SAcquisitionStatus status;              /**< Shared poll status */
+    usb::SUsbCaptureProtocol captureProtocol{}; /**< Active capture format */
+    mutable std::mutex waveformMutex;       /**< Guards the latest waveform */
+    SWaveformSamples latestWaveform{};      /**< Most recently decoded frame */
+    uint32_t latestTriggerPoint{0U};        /**< Trigger point for latest frame */
+    std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
+    bool hasWaveform{false};                /**< True after first decoded frame */
 };
 
 /********************* Application Programming Interface *********************/
@@ -105,6 +116,19 @@ void stopAcquisitionLoop(SAcquisitionLoop *loop);
  * @returns True when a terminal worker was joined
  */
 bool joinFinishedAcquisitionLoop(SAcquisitionLoop *loop);
+
+/**
+ * @brief Copies the most recently decoded waveform frame
+ * @param[in] loop Acquisition loop that owns the latest frame
+ * @param[out] waveform Destination for waveform samples
+ * @param[out] triggerPoint Destination for the waveform trigger position
+ * @returns True when a decoded waveform frame is available
+ */
+bool getLatestWaveform(
+    const SAcquisitionLoop *loop,
+    SWaveformSamples *waveform,
+    uint32_t *triggerPoint
+);
 
 } // namespace capture
 } // namespace oscilloscope
