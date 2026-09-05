@@ -34,36 +34,12 @@ namespace capture {
 
 /****************************** Module variables ******************************/
 
-/** @brief Hantek DSO-2250 bulk endpoint addresses */
-static const uint8_t kEpBulkOut = 0x02U;
-static const uint8_t kEpBulkIn = 0x86U;
-static const uint16_t kEpBulkInMaxPacketLen = 512U;
-
 /** @brief Vendor control requests used by the polling cycle */
 static const uint8_t kControlGetSpeed = 0xB2U;
 static const uint8_t kControlBeginCommand = 0xB3U;
 
 /** @brief Length of the FX2 connection-speed control response */
 static const uint16_t kSpeedResponseLen = 10U;
-
-/** @brief Protocol command byte for the "get capture state" request */
-static const uint8_t kCmdGetCaptureState = 6U;
-/** @brief Protocol command byte for the "get channel data" request */
-static const uint8_t kCmdGetChannelData = 5U;
-/** @brief Protocol command byte that starts a new capture */
-static const uint8_t kCmdCaptureStart = 3U;
-/** @brief Protocol command byte that enables the trigger */
-static const uint8_t kCmdTriggerEnabled = 4U;
-
-/** @brief Capture state returned when the DSO-2250 buffer is complete */
-static const uint8_t kCaptureSuccess = 2U;
-/** @brief Complete two-channel samples read for each DSO-2250 capture */
-static const size_t kCaptureSampleCount = kWaveformMaxSampleCount;
-/** @brief Raw bytes in a complete interleaved two-channel capture */
-static const size_t kCaptureDataLength = kCaptureSampleCount * 2U;
-/** @brief Bulk packets required to receive a complete capture */
-static const size_t kCapturePacketCount =
-    kCaptureDataLength / kEpBulkInMaxPacketLen;
 
 /** @brief Delay between poll cycles; also the effective host-activity rate */
 static const unsigned int kPollIntervalMs = 100U;
@@ -104,7 +80,7 @@ static usb::SUsbTransferResult executePollingTransaction(
 );
 
 /**
- * @brief Reads a complete DSO-2250 capture buffer after a successful trigger
+ * @brief Reads a complete capture buffer after a successful trigger
  * @param[in] connection USB connection carrying the capture data
  * @param[out] data Destination for the complete interleaved capture
  * @param[out] failedOperation First operation that failed
@@ -117,7 +93,7 @@ static usb::SUsbTransferResult readCaptureData(
 );
 
 /**
- * @brief Starts a DSO-2250 capture and enables its trigger
+ * @brief Starts a capture and enables its trigger
  * @param[in] connection USB connection controlling the capture
  * @param[out] failedOperation First operation that failed
  * @returns Result of the first failed operation or the final successful write
@@ -165,6 +141,7 @@ void startAcquisitionLoop(
     if (loop != NULL) {
         loop->stopRequested.store(false);
         loop->rawPacketQueue.reset();
+        loop->captureProtocol = connection.captureProtocol;
         loop->status.lastCaptureState.store(-1);
         loop->status.droppedPacketCount.store(0U);
         loop->status.state.store(EAcquisitionState::eRunning);
@@ -256,13 +233,16 @@ static void pollCaptureState(
     SAcquisitionLoop *loop,
     usb::SUsbConnection connection
 ) {
-    uint8_t response[kEpBulkInMaxPacketLen];
-    std::array<uint8_t, kCaptureDataLength> captureData;
+    uint8_t response[kRawUsbPacketMaxSize];
+    std::array<uint8_t, kRawUsbPacketMaxSize> captureData;
     usb::SUsbTransferResult transferResult = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
     EAcquisitionOperation failedOperation = EAcquisitionOperation::eNone;
     SCaptureStateResponse captureState = {0U, 0U};
+    const size_t captureDataLength =
+        connection.captureProtocol.sampleCount *
+        connection.captureProtocol.channelCount;
     unsigned int consecutiveFailures = 0U;
     unsigned int delayMs = kPollIntervalMs;
     bool captureStartRequired = true;
@@ -290,7 +270,10 @@ static void pollCaptureState(
                 loop->status.lastCaptureState.store(
                     static_cast<int>(captureState.captureState)
                 );
-                if (captureState.captureState == kCaptureSuccess) {
+                if (
+                    captureState.captureState ==
+                    connection.captureProtocol.captureCompleteState
+                ) {
                     transferResult = readCaptureData(
                         connection,
                         captureData.data(),
@@ -302,7 +285,7 @@ static void pollCaptureState(
                     ) {
                         loop->rawPacketQueue.push(
                             captureData.data(),
-                            captureData.size(),
+                            captureDataLength,
                             captureState.triggerPoint
                         );
                         transferResult = restartCapture(
@@ -363,7 +346,9 @@ static void processRawPackets(SAcquisitionLoop *loop) {
             parseInterleavedWaveformSamples(
                 packet.payload.data(),
                 packet.validLength,
-                kCaptureSampleCount,
+                loop->captureProtocol.sampleCount,
+                loop->captureProtocol.channelCount,
+                loop->captureProtocol.channelOneSecond,
                 &waveform
             )
         ) {
@@ -385,7 +370,9 @@ static usb::SUsbTransferResult executePollingTransaction(
     EAcquisitionOperation *failedOperation
 ) {
     uint8_t speedBuffer[kSpeedResponseLen];
-    uint8_t captureStateCommand[2] = {kCmdGetCaptureState, 0U};
+    uint8_t captureStateCommand[2] = {
+        connection.captureProtocol.captureStateCommand, 0U
+    };
     usb::SUsbTransferResult result = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
@@ -406,9 +393,9 @@ static usb::SUsbTransferResult executePollingTransaction(
         *failedOperation = EAcquisitionOperation::eCaptureStateResponse;
         result = usb::bulkRead(
             connection,
-            kEpBulkIn,
+            connection.captureProtocol.bulkInEndpoint,
             response,
-            kEpBulkInMaxPacketLen,
+            connection.captureProtocol.bulkInPacketLength,
             kTransferTimeoutMs,
             kTransferAttempts,
             4
@@ -429,39 +416,58 @@ static usb::SUsbTransferResult readCaptureData(
     uint8_t *data,
     EAcquisitionOperation *failedOperation
 ) {
-    uint8_t channelDataCommand[2] = {kCmdGetChannelData, 0U};
+    uint8_t channelDataCommand[2] = {
+        connection.captureProtocol.channelDataCommand, 0U
+    };
     uint8_t speedBuffer[kSpeedResponseLen];
     usb::SUsbTransferResult result = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
+    const size_t captureDataLength =
+        connection.captureProtocol.sampleCount *
+        connection.captureProtocol.channelCount;
+    size_t capturePacketCount = 0U;
     size_t packetIndex = 0U;
 
-    result = executeCommand(
-        connection,
-        channelDataCommand,
-        sizeof(channelDataCommand),
-        EAcquisitionOperation::eChannelDataCommand,
-        failedOperation
-    );
+    if (
+        (connection.captureProtocol.bulkInPacketLength == 0U) ||
+        (captureDataLength > kRawUsbPacketMaxSize) ||
+        ((captureDataLength % connection.captureProtocol.bulkInPacketLength) !=
+            0U)
+    ) {
+        result.status = usb::EUsbTransferStatus::eError;
+        result.errorMessage = "Invalid capture protocol";
+    }
+    else {
+        capturePacketCount =
+            captureDataLength / connection.captureProtocol.bulkInPacketLength;
+        result = executeCommand(
+            connection,
+            channelDataCommand,
+            sizeof(channelDataCommand),
+            EAcquisitionOperation::eChannelDataCommand,
+            failedOperation
+        );
+    }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eSpeedBeforeResponse;
         result = readConnectionSpeed(connection, speedBuffer);
     }
     for (
         packetIndex = 0U;
-        (packetIndex < kCapturePacketCount) &&
+        (packetIndex < capturePacketCount) &&
         (result.status == usb::EUsbTransferStatus::eSuccess);
         ++packetIndex
     ) {
         *failedOperation = EAcquisitionOperation::eChannelDataResponse;
         result = usb::bulkRead(
             connection,
-            kEpBulkIn,
-            data + packetIndex * kEpBulkInMaxPacketLen,
-            kEpBulkInMaxPacketLen,
+            connection.captureProtocol.bulkInEndpoint,
+            data + packetIndex * connection.captureProtocol.bulkInPacketLength,
+            connection.captureProtocol.bulkInPacketLength,
             kTransferTimeoutMs,
             kTransferAttempts,
-            kEpBulkInMaxPacketLen
+            connection.captureProtocol.bulkInPacketLength
         );
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
@@ -478,8 +484,12 @@ static usb::SUsbTransferResult restartCapture(
     const usb::SUsbConnection &connection,
     EAcquisitionOperation *failedOperation
 ) {
-    const uint8_t captureStartCommand[2] = {kCmdCaptureStart, 0U};
-    const uint8_t triggerEnabledCommand[2] = {kCmdTriggerEnabled, 0U};
+    const uint8_t captureStartCommand[2] = {
+        connection.captureProtocol.captureStartCommand, 0U
+    };
+    const uint8_t triggerEnabledCommand[2] = {
+        connection.captureProtocol.triggerEnabledCommand, 0U
+    };
     usb::SUsbTransferResult result = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
@@ -540,7 +550,7 @@ static usb::SUsbTransferResult executeCommand(
         *failedOperation = commandOperation;
         result = usb::bulkWrite(
             connection,
-            kEpBulkOut,
+            connection.captureProtocol.bulkOutEndpoint,
             command,
             commandLength,
             kTransferTimeoutMs,

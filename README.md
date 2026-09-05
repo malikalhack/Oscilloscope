@@ -23,6 +23,8 @@ After a completed capture, the acquisition worker reads its full 32,768-sample
 two-channel buffer in 512-byte USB packets and starts the next capture. Live
 waveform rendering is not yet implemented. A processing worker decodes complete
 captures and publishes the latest frame and trigger point safely for rendering.
+Each supported-device entry supplies its capture protocol, including endpoints,
+packet size, commands, channel layout, sample count, and completion state.
 
 ## Planned Stack
 

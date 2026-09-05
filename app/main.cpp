@@ -101,7 +101,7 @@ using oscilloscope::usb::SUsbScanResult;
 static const uint32_t kUsbPresenceIntervalMs = 1000U;
 
 /** @brief Cleared device identity used to reset connection bookkeeping */
-static const SUsbDeviceInfo kEmptyDeviceInfo = {0U, 0U, 0U, 0U, NULL};
+static const SUsbDeviceInfo kEmptyDeviceInfo = {NULL, 0U, 0U, 0U, 0U};
 
 #ifdef __GNUC__  // GCC/MinGW only
 const char kVersionInfo[] __attribute__((section(".version"), used)) =
@@ -313,7 +313,7 @@ int main (void) {
     bool demoMode =
         (usbScanResult.status != EScanStatus::eSuccess) ||
         usbScanResult.devices.empty();
-    SUsbConnection usbConnection = {NULL, NULL, 0U, false};
+    SUsbConnection usbConnection = { NULL, NULL, {}, 0U, false };
     SAcquisitionLoop acquisitionLoop;
     SUsbDeviceInfo connectedDevice = kEmptyDeviceInfo;
     std::string deviceStatus = formatUsbConnectionStatus(

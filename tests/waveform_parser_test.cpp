@@ -88,7 +88,7 @@ static bool testInterleavedSamples() {
 
     result = expect(
         parseInterleavedWaveformSamples(
-            packet, sizeof(packet), 3U, &samples
+            packet, sizeof(packet), 3U, 2U, true, &samples
         ),
         "parse interleaved samples"
     ) && result;
@@ -120,14 +120,16 @@ static bool testInvalidSampleBuffers() {
     samples.sampleCount = 99U;
     result = expect(
         !parseInterleavedWaveformSamples(
-            packet, sizeof(packet) - 1U, 2U, &samples
+            packet, sizeof(packet) - 1U, 2U, 2U, true, &samples
         ),
         "reject short sample buffer"
     ) && result;
     result = expect(samples.sampleCount == 99U, "preserve rejected samples") &&
         result;
     result = expect(
-        !parseInterleavedWaveformSamples(packet, sizeof(packet), 32769U, &samples),
+        !parseInterleavedWaveformSamples(
+            packet, sizeof(packet), 32769U, 2U, true, &samples
+        ),
         "reject oversized sample count"
     ) && result;
 

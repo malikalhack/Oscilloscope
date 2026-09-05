@@ -36,14 +36,15 @@ namespace usb {
 
 /** @brief Defines a supported model signature */
 struct SSupportedDevice {
+    const char *modelName;
+    const char *firmwareBaseName;
+    SUsbCaptureProtocol captureProtocol;
     uint16_t vendorId;
     uint16_t productId;
     uint16_t operationalVendorId;
     uint8_t interfaceNumber;
     uint8_t alternateSetting;
     bool requiresFirmware;
-    const char *modelName;
-    const char *firmwareBaseName;
 };
 
 /** @brief Delay between scans while waiting for FX2 re-enumeration */
@@ -57,12 +58,14 @@ static const unsigned int kFirmwareReenumerationAttempts = 50U;
 static const SSupportedDevice kSupportedDevices[] = {
     /* The bootloader exposes the bulk pair on alt setting 1. */
     {
-        0x04B4U, 0x2250U, 0x04B5U, 0U, 1U, true,
-        "Hantek DSO-2250 Bootloader", "DSO2250"
+        "Hantek DSO-2250 Bootloader", "DSO2250",
+        {32768U, 512U, 0x02U, 0x86U, 2U, true, 2U, 6U, 5U, 3U, 4U},
+        0x04B4U, 0x2250U, 0x04B5U, 0U, 1U, true
     },
     {
-        0x04B5U, 0x2250U, 0x04B5U, 0U, 0U, false,
-        "Hantek DSO-2250", "DSO2250"
+        "Hantek DSO-2250", "DSO2250",
+        {32768U, 512U, 0x02U, 0x86U, 2U, true, 2U, 6U, 5U, 3U, 4U},
+        0x04B5U, 0x2250U, 0x04B5U, 0U, 0U, false
     }
 };
 
@@ -172,7 +175,7 @@ static SUsbTransferResult makeTransferResult(
 SUsbScanResult enumerateSupportedDevices() {
     libusb_context *context = NULL;
     libusb_device **deviceList = NULL;
-    SUsbScanResult result = {EScanStatus::eSuccess, {}, ""};
+    SUsbScanResult result = {{}, "", EScanStatus::eSuccess};
     const int initializationResult = libusb_init(&context);
 
     if (initializationResult != LIBUSB_SUCCESS) {
@@ -202,11 +205,11 @@ SUsbScanResult enumerateSupportedDevices() {
 
                     if (supportedDevice != NULL) {
                         result.devices.push_back({
+                            supportedDevice->modelName,
                             descriptor.idVendor,
                             descriptor.idProduct,
                             libusb_get_bus_number(deviceList[index]),
-                            libusb_get_device_address(deviceList[index]),
-                            supportedDevice->modelName
+                            libusb_get_device_address(deviceList[index])
                         });
                     }
                 }
@@ -228,13 +231,13 @@ SUsbConnectionResult connectToDevice(
     const SUsbDeviceInfo &deviceInfo,
     SUsbConnection *connection
 ) {
-    SUsbConnectionResult result = {EConnectionStatus::eDisconnected, ""};
+    SUsbConnectionResult result = {"", EConnectionStatus::eDisconnected};
     libusb_context *context = NULL;
     libusb_device **deviceList = NULL;
     libusb_device *device = NULL;
     libusb_device_handle *handle = NULL;
     const SSupportedDevice *supportedDevice = NULL;
-    SFirmwareLoadResult firmwareResult = {EFirmwareLoadStatus::eLoaded, ""};
+    SFirmwareLoadResult firmwareResult = {"", EFirmwareLoadStatus::eLoaded};
     ssize_t deviceCount = 0;
     int initializationResult = LIBUSB_SUCCESS;
     int openResult = LIBUSB_SUCCESS;
@@ -390,6 +393,8 @@ SUsbConnectionResult connectToDevice(
                                 connection->interfaceNumber =
                                     supportedDevice->interfaceNumber;
                                 connection->isConnected = true;
+                                connection->captureProtocol =
+                                    supportedDevice->captureProtocol;
                                 result.status = EConnectionStatus::eConnected;
                                 context = NULL;
                                 handle = NULL;
@@ -417,7 +422,7 @@ SUsbConnectionResult connectToDevice(
 
 /** @fn disconnectFromDevice */
 SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
-    SUsbConnectionResult result = {EConnectionStatus::eDisconnected, ""};
+    SUsbConnectionResult result = {"", EConnectionStatus::eDisconnected};
     int releaseResult = LIBUSB_SUCCESS;
 
     if (connection == NULL) {
@@ -451,6 +456,7 @@ SUsbConnectionResult disconnectFromDevice(SUsbConnection *connection) {
         connection->handle = NULL;
         connection->interfaceNumber = 0U;
         connection->isConnected = false;
+        connection->captureProtocol = {};
     }
 
     return result;
@@ -482,11 +488,11 @@ bool getConnectedDeviceInfo(
             );
             if (supportedDevice != NULL) {
                 *deviceInfo = {
+                    supportedDevice->modelName,
                     descriptor.idVendor,
                     descriptor.idProduct,
                     libusb_get_bus_number(device),
-                    libusb_get_device_address(device),
-                    supportedDevice->modelName
+                    libusb_get_device_address(device)
                 };
                 result = true;
             }

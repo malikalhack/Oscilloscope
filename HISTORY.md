@@ -51,6 +51,15 @@ Records key decisions, structural changes, and completed development stages.
 - Extended FIFO tests to verify trigger-point metadata is retained with each
   packet.
 
+### Capture protocol profiles
+
+- Moved capture endpoints, command bytes, packet length, channel layout,
+  sample count, and completion state into each supported-device entry.
+- Preserve the selected profile in the active USB connection and use it for
+  acquisition and waveform parsing instead of model-named function contracts.
+- Validate profile packetisation and fixed capture-storage bounds before
+  requesting sample data.
+
 ### Code style - Immutable object naming
 
 - Reserved `UPPER_CASE` for preprocessor macros.

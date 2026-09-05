@@ -38,8 +38,8 @@ static const size_t kWaveformMaxSampleCount = 32768U;
 
 /** @brief Decoded capture state and normalized trigger sample position */
 struct SCaptureStateResponse {
-    uint8_t captureState;   /**< Device capture state byte */
     uint32_t triggerPoint;  /**< Trigger position in the sample ring */
+    uint8_t captureState;   /**< Device capture state byte */
 };
 
 /** @brief One decoded two-channel DSO-2250 waveform capture */
@@ -52,7 +52,7 @@ struct SWaveformSamples {
 /********************* Application Programming Interface *********************/
 
 /**
- * @brief Decodes the DSO-2250 capture-state response packet
+ * @brief Decodes a capture-state response packet
  * @param[in] data Raw USB response data
  * @param[in] length Number of bytes in data
  * @param[out] response Destination for decoded state and trigger position
@@ -65,18 +65,21 @@ bool parseCaptureStateResponse(
 );
 
 /**
- * @brief Decodes an interleaved two-channel DSO-2250 sample buffer
+ * @brief Decodes an interleaved waveform sample buffer
  * @param[in] data Raw USB capture data
  * @param[in] length Number of bytes in data
  * @param[in] sampleCount Expected samples in each channel
+ * @param[in] channelCount Number of interleaved channels
+ * @param[in] channelOneSecond True when each pair is CH2 then CH1
  * @param[out] samples Destination for decoded channel samples
- * @returns True when the complete expected two-channel buffer was decoded
- * @note The legacy protocol orders each pair as CH2 then CH1
+ * @returns True when the complete expected buffer was decoded
  */
 bool parseInterleavedWaveformSamples(
     const uint8_t *data,
     size_t length,
     size_t sampleCount,
+    uint8_t channelCount,
+    bool channelOneSecond,
     SWaveformSamples *samples
 );
 

@@ -66,22 +66,38 @@ bool parseInterleavedWaveformSamples(
     const uint8_t *data,
     size_t length,
     size_t sampleCount,
+    uint8_t channelCount,
+    bool channelOneSecond,
     SWaveformSamples *samples
 ) {
     bool result = false;
     size_t sampleIndex = 0U;
     size_t expectedLength = 0U;
 
-    if (sampleCount <= kWaveformMaxSampleCount) {
-        expectedLength = sampleCount * 2U;
+    if (
+        (sampleCount <= kWaveformMaxSampleCount) &&
+        ((channelCount == 1U) || (channelCount == 2U))
+    ) {
+        expectedLength = sampleCount * channelCount;
         if (
             (data != NULL) &&
             (samples != NULL) &&
             (length == expectedLength)
         ) {
             for (sampleIndex = 0U; sampleIndex < sampleCount; ++sampleIndex) {
-                samples->channelTwo[sampleIndex] = data[sampleIndex * 2U];
-                samples->channelOne[sampleIndex] = data[sampleIndex * 2U + 1U];
+                if (channelCount == 1U) {
+                    samples->channelOne[sampleIndex] = data[sampleIndex];
+                }
+                else if (channelOneSecond) {
+                    samples->channelTwo[sampleIndex] = data[sampleIndex * 2U];
+                    samples->channelOne[sampleIndex] =
+                        data[sampleIndex * 2U + 1U];
+                }
+                else {
+                    samples->channelOne[sampleIndex] = data[sampleIndex * 2U];
+                    samples->channelTwo[sampleIndex] =
+                        data[sampleIndex * 2U + 1U];
+                }
             }
             samples->sampleCount = sampleCount;
             result = true;

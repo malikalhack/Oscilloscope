@@ -62,8 +62,8 @@ enum class EAcquisitionOperation {
 
 /** @brief Acquisition state safe to read from any thread */
 struct SAcquisitionStatus {
-    std::atomic<int> lastCaptureState{-1};       /**< Last raw capture state */
     std::atomic<size_t> droppedPacketCount{0U};  /**< Queue overflow count */
+    std::atomic<int> lastCaptureState{-1};       /**< Last raw capture state */
     std::atomic<EAcquisitionState> state{
         EAcquisitionState::eStopped
     }; /**< Current worker state */
@@ -80,11 +80,12 @@ struct SAcquisitionLoop {
     std::thread workerThread;               /**< Background USB producer */
     std::thread processingThread;           /**< Background packet consumer */
     RawPacketQueue rawPacketQueue{8U};      /**< Bounded raw response FIFO */
-    std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
     SAcquisitionStatus status;              /**< Shared poll status */
+    usb::SUsbCaptureProtocol captureProtocol{}; /**< Active capture format */
     mutable std::mutex waveformMutex;       /**< Guards the latest waveform */
     SWaveformSamples latestWaveform{};      /**< Most recently decoded frame */
     uint32_t latestTriggerPoint{0U};        /**< Trigger point for latest frame */
+    std::atomic<bool> stopRequested{false}; /**< Set to request a stop */
     bool hasWaveform{false};                /**< True after first decoded frame */
 };
 

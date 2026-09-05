@@ -41,7 +41,7 @@ SFirmwareLoadResult loadFx2Firmware(
     const uint8_t deviceAddress,
     const SFirmwarePaths &paths
 ) {
-    SFirmwareLoadResult result = {EFirmwareLoadStatus::eLoaded, ""};
+    SFirmwareLoadResult result = {"", EFirmwareLoadStatus::eLoaded};
     char devicePath[32];
     pid_t childPid = -1;
     int childStatus = 0;
