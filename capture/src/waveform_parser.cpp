@@ -72,7 +72,7 @@ bool parseInterleavedWaveformSamples(
     size_t sampleIndex = 0U;
     size_t expectedLength = 0U;
 
-    if (sampleCount <= WAVEFORM_MAX_SAMPLE_COUNT) {
+    if (sampleCount <= kWaveformMaxSampleCount) {
         expectedLength = sampleCount * 2U;
         if (
             (data != NULL) &&

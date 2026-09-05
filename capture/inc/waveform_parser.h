@@ -34,7 +34,7 @@ namespace oscilloscope {
 namespace capture {
 
 /** @brief Maximum samples in a DSO-2250 two-channel capture */
-static const size_t WAVEFORM_MAX_SAMPLE_COUNT = 32768U;
+static const size_t kWaveformMaxSampleCount = 32768U;
 
 /** @brief Decoded capture state and normalized trigger sample position */
 struct SCaptureStateResponse {
@@ -44,8 +44,8 @@ struct SCaptureStateResponse {
 
 /** @brief One decoded two-channel DSO-2250 waveform capture */
 struct SWaveformSamples {
-    std::array<uint8_t, WAVEFORM_MAX_SAMPLE_COUNT> channelOne; /**< CH1 */
-    std::array<uint8_t, WAVEFORM_MAX_SAMPLE_COUNT> channelTwo; /**< CH2 */
+    std::array<uint8_t, kWaveformMaxSampleCount> channelOne; /**< CH1 */
+    std::array<uint8_t, kWaveformMaxSampleCount> channelTwo; /**< CH2 */
     size_t sampleCount; /**< Valid sample count in both channel arrays */
 };
 

@@ -37,11 +37,11 @@ namespace oscilloscope {
 namespace capture {
 
 /** @brief Maximum raw two-channel USB capture size accepted by the queue */
-static const size_t RAW_USB_PACKET_MAX_SIZE = 65536U;
+static const size_t kRawUsbPacketMaxSize = 65536U;
 
 /** @brief Owns one raw USB response and its valid byte count */
 struct SRawUsbPacket {
-    std::array<uint8_t, RAW_USB_PACKET_MAX_SIZE> payload; /**< Raw bytes */
+    std::array<uint8_t, kRawUsbPacketMaxSize> payload; /**< Raw bytes */
     size_t validLength; /**< Number of valid bytes in payload */
 };
 

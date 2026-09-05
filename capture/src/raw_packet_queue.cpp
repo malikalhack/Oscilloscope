@@ -54,7 +54,7 @@ bool RawPacketQueue::push(const uint8_t *data, const size_t length) {
         !packets.empty() &&
         (data != NULL) &&
         (length > 0U) &&
-        (length <= RAW_USB_PACKET_MAX_SIZE)
+        (length <= kRawUsbPacketMaxSize)
     ) {
         if (packetCount == packets.size()) {
             readIndex = (readIndex + 1U) % packets.size();

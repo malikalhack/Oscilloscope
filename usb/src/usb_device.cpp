@@ -47,14 +47,14 @@ struct SSupportedDevice {
 };
 
 /** @brief Delay between scans while waiting for FX2 re-enumeration */
-static const unsigned int FIRMWARE_REENUMERATION_POLL_DELAY_US = 100000U;
+static const unsigned int kFirmwareReenumerationPollDelayUs = 100000U;
 /** @brief Maximum scans while waiting for the operational USB device */
-static const unsigned int FIRMWARE_REENUMERATION_ATTEMPTS = 50U;
+static const unsigned int kFirmwareReenumerationAttempts = 50U;
 
 /****************************** Module variables ******************************/
 
 /** @brief Maps supported USB VID/PID pairs to model display names */
-static const SSupportedDevice supported_devices[] = {
+static const SSupportedDevice kSupportedDevices[] = {
     /* The bootloader exposes the bulk pair on alt setting 1. */
     {
         0x04B4U, 0x2250U, 0x04B5U, 0U, 1U, true,
@@ -302,11 +302,11 @@ SUsbConnectionResult connectToDevice(
                         for (
                             reenumerationAttempt = 0U;
                             (reenumerationAttempt <
-                                FIRMWARE_REENUMERATION_ATTEMPTS) &&
+                                kFirmwareReenumerationAttempts) &&
                             (device == NULL);
                             ++reenumerationAttempt
                         ) {
-                            usleep(FIRMWARE_REENUMERATION_POLL_DELAY_US);
+                            usleep(kFirmwareReenumerationPollDelayUs);
                             deviceCount = libusb_get_device_list(
                                 context,
                                 &deviceList
@@ -659,14 +659,14 @@ static const SSupportedDevice* findSupportedDevice(
 ) {
     const SSupportedDevice *result = NULL;
     const size_t deviceCount =
-        sizeof(supported_devices) / sizeof(supported_devices[0]);
+        sizeof(kSupportedDevices) / sizeof(kSupportedDevices[0]);
 
     for (size_t index = 0U; index < deviceCount; ++index) {
         if (
-            (supported_devices[index].vendorId == vendorId) &&
-            (supported_devices[index].productId == productId)
+            (kSupportedDevices[index].vendorId == vendorId) &&
+            (kSupportedDevices[index].productId == productId)
         ) {
-            result = &supported_devices[index];
+            result = &kSupportedDevices[index];
             break;
         }
     }

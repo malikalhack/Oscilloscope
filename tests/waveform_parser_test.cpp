@@ -82,7 +82,7 @@ static bool testCaptureStateResponse() {
 
 /** @fn testInterleavedSamples */
 static bool testInterleavedSamples() {
-    const uint8_t packet[] = {20U, 10U, 21U, 11U, 22U, 12U};
+    const uint8_t packet[] = { 20U, 10U, 21U, 11U, 22U, 12U };
     SWaveformSamples samples = {};
     bool result = true;
 

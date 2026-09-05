@@ -33,26 +33,26 @@ namespace capture {
 /****************************** Module variables ******************************/
 
 /** @brief Hantek DSO-2250 bulk endpoint addresses */
-static const uint8_t EP_BULK_OUT = 0x02U;
-static const uint8_t EP_BULK_IN = 0x86U;
-static const uint16_t EP_BULK_IN_MAX_PACKET_LEN = 512U;
+static const uint8_t kEpBulkOut = 0x02U;
+static const uint8_t kEpBulkIn = 0x86U;
+static const uint16_t kEpBulkInMaxPacketLen = 512U;
 
 /** @brief Vendor control requests used by the polling cycle */
-static const uint8_t CONTROL_GETSPEED = 0xB2U;
-static const uint8_t CONTROL_BEGINCOMMAND = 0xB3U;
+static const uint8_t kControlGetSpeed = 0xB2U;
+static const uint8_t kControlBeginCommand = 0xB3U;
 
 /** @brief Length of the FX2 connection-speed control response */
-static const uint16_t SPEED_RESPONSE_LEN = 10U;
+static const uint16_t kSpeedResponseLen = 10U;
 
 /** @brief Protocol command byte for the "get capture state" request */
-static const uint8_t CMD_GET_CAPTURE_STATE = 6U;
+static const uint8_t kCmdGetCaptureState = 6U;
 
 /** @brief Delay between poll cycles; also the effective host-activity rate */
-static const unsigned int POLL_INTERVAL_MS = 100U;
-static const unsigned int RECOVERY_INTERVAL_MS = 250U;
-static const unsigned int TRANSFER_TIMEOUT_MS = 250U;
-static const unsigned int TRANSFER_ATTEMPTS = 1U;
-static const unsigned int MAX_CONSECUTIVE_FAILURES = 3U;
+static const unsigned int kPollIntervalMs = 100U;
+static const unsigned int kRecoveryIntervalMs = 250U;
+static const unsigned int kTransferTimeoutMs = 250U;
+static const unsigned int kTransferAttempts = 1U;
+static const unsigned int kMaxConsecutiveFailures = 3U;
 
 /***************************** Private prototypes *****************************/
 
@@ -165,13 +165,13 @@ static void pollCaptureState(
     SAcquisitionLoop *loop,
     usb::SUsbConnection connection
 ) {
-    uint8_t response[EP_BULK_IN_MAX_PACKET_LEN];
+    uint8_t response[kEpBulkInMaxPacketLen];
     usb::SUsbTransferResult transferResult = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
     EAcquisitionOperation failedOperation = EAcquisitionOperation::eNone;
     unsigned int consecutiveFailures = 0U;
-    unsigned int delayMs = POLL_INTERVAL_MS;
+    unsigned int delayMs = kPollIntervalMs;
 
     while (!loop->stopRequested.load()) {
         transferResult = executePollingTransaction(
@@ -192,7 +192,7 @@ static void pollCaptureState(
                 usb::EUsbTransferStatus::eSuccess
             );
             consecutiveFailures = 0U;
-            delayMs = POLL_INTERVAL_MS;
+            delayMs = kPollIntervalMs;
         }
         else {
             loop->status.failedOperation.store(failedOperation);
@@ -203,13 +203,13 @@ static void pollCaptureState(
                 loop->status.state.store(EAcquisitionState::eDeviceLost);
                 break;
             }
-            else if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            else if (consecutiveFailures >= kMaxConsecutiveFailures) {
                 loop->status.state.store(EAcquisitionState::eFailed);
                 break;
             }
             else {
                 loop->status.state.store(EAcquisitionState::eRecovering);
-                delayMs = RECOVERY_INTERVAL_MS;
+                delayMs = kRecoveryIntervalMs;
             }
         }
 
@@ -244,8 +244,8 @@ static usb::SUsbTransferResult executePollingTransaction(
 ) {
     uint8_t beginCommandPayload[10] =
         {0x0FU, 0x03U, 0x03U, 0x03U, 0U, 0U, 0U, 0U, 0U, 0U};
-    uint8_t speedBuffer[SPEED_RESPONSE_LEN];
-    uint8_t captureStateCommand[2] = {CMD_GET_CAPTURE_STATE, 0U};
+    uint8_t speedBuffer[kSpeedResponseLen];
+    uint8_t captureStateCommand[2] = {kCmdGetCaptureState, 0U};
     usb::SUsbTransferResult result = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
@@ -253,13 +253,13 @@ static usb::SUsbTransferResult executePollingTransaction(
     *failedOperation = EAcquisitionOperation::eBeginCommand;
     result = usb::controlWrite(
         connection,
-        CONTROL_BEGINCOMMAND,
+        kControlBeginCommand,
         beginCommandPayload,
         sizeof(beginCommandPayload),
         0U,
         0U,
-        TRANSFER_TIMEOUT_MS,
-        TRANSFER_ATTEMPTS
+        kTransferTimeoutMs,
+        kTransferAttempts
     );
 
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
@@ -270,11 +270,11 @@ static usb::SUsbTransferResult executePollingTransaction(
         *failedOperation = EAcquisitionOperation::eCaptureStateCommand;
         result = usb::bulkWrite(
             connection,
-            EP_BULK_OUT,
+            kEpBulkOut,
             captureStateCommand,
             sizeof(captureStateCommand),
-            TRANSFER_TIMEOUT_MS,
-            TRANSFER_ATTEMPTS
+            kTransferTimeoutMs,
+            kTransferAttempts
         );
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
@@ -285,11 +285,11 @@ static usb::SUsbTransferResult executePollingTransaction(
         *failedOperation = EAcquisitionOperation::eCaptureStateResponse;
         result = usb::bulkRead(
             connection,
-            EP_BULK_IN,
+            kEpBulkIn,
             response,
-            EP_BULK_IN_MAX_PACKET_LEN,
-            TRANSFER_TIMEOUT_MS,
-            TRANSFER_ATTEMPTS,
+            kEpBulkInMaxPacketLen,
+            kTransferTimeoutMs,
+            kTransferAttempts,
             4
         );
     }
@@ -309,13 +309,13 @@ static usb::SUsbTransferResult readConnectionSpeed(
 ) {
     return usb::controlRead(
         connection,
-        CONTROL_GETSPEED,
+        kControlGetSpeed,
         speedBuffer,
-        SPEED_RESPONSE_LEN,
+        kSpeedResponseLen,
         0U,
         0U,
-        TRANSFER_TIMEOUT_MS,
-        TRANSFER_ATTEMPTS,
+        kTransferTimeoutMs,
+        kTransferAttempts,
         1U
     );
 }

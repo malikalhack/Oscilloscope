@@ -98,13 +98,13 @@ using oscilloscope::usb::SUsbScanResult;
 /****************************** Module variables ******************************/
 
 /** @brief Interval between USB presence checks outside acquisition */
-static const uint32_t USB_PRESENCE_INTERVAL_MS = 1000U;
+static const uint32_t kUsbPresenceIntervalMs = 1000U;
 
 /** @brief Cleared device identity used to reset connection bookkeeping */
-static const SUsbDeviceInfo EMPTY_DEVICE_INFO = {0U, 0U, 0U, 0U, NULL};
+static const SUsbDeviceInfo kEmptyDeviceInfo = {0U, 0U, 0U, 0U, NULL};
 
 #ifdef __GNUC__  // GCC/MinGW only
-const char version_info[] __attribute__((section(".version"), used)) =
+const char kVersionInfo[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
     "FileVersion: 0.2.6.0\n"
     "ProductName: Oscilloscope\n"
@@ -113,7 +113,7 @@ const char version_info[] __attribute__((section(".version"), used)) =
     "LegalCopyright: Copyright (C) Anton Chernov, 2026\n"
     "OriginalFilename: run\n";
 
-const char build_info[] __attribute__((section(".buildinfo"), used)) =
+const char kBuildInfo[] __attribute__((section(".buildinfo"), used)) =
     "Build date: " __DATE__ " " __TIME__ "\n"
     "Compiler: GCC " __VERSION__ "\n";
 
@@ -315,13 +315,13 @@ int main (void) {
         usbScanResult.devices.empty();
     SUsbConnection usbConnection = {NULL, NULL, 0U, false};
     SAcquisitionLoop acquisitionLoop;
-    SUsbDeviceInfo connectedDevice = EMPTY_DEVICE_INFO;
+    SUsbDeviceInfo connectedDevice = kEmptyDeviceInfo;
     std::string deviceStatus = formatUsbConnectionStatus(
         usbScanResult,
         usbConnection
     );
     uint32_t nextUsbPresenceCheck =
-        SDL_GetTicks() + USB_PRESENCE_INTERVAL_MS;
+        SDL_GetTicks() + kUsbPresenceIntervalMs;
     const char* timebases[] = {
         "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
         "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
@@ -459,7 +459,7 @@ int main (void) {
                 const SUsbConnectionResult disconnectResult =
                     oscilloscope::usb::disconnectFromDevice(&usbConnection);
 
-                connectedDevice = EMPTY_DEVICE_INFO;
+                connectedDevice = kEmptyDeviceInfo;
                 deviceWasDisconnected = false;
                 if (disconnectResult.errorMessage.empty()) {
                     deviceStatus = formatUsbConnectionStatus(
@@ -730,7 +730,7 @@ static void handleAcquisitionFault(
         *acquisitionRunning = false;
         if (acquisitionState == EAcquisitionState::eDeviceLost) {
             oscilloscope::usb::disconnectFromDevice(connection);
-            *connectedDevice = EMPTY_DEVICE_INFO;
+            *connectedDevice = kEmptyDeviceInfo;
             *deviceWasDisconnected = true;
             *deviceStatus = "Device disconnected: " + acquisitionError;
         }
@@ -760,7 +760,7 @@ static void pollUsbPresence(
         (static_cast<int32_t>(currentTicks - *nextPresenceCheck) >= 0)
     ) {
         *usbScanResult = oscilloscope::usb::enumerateSupportedDevices();
-        *nextPresenceCheck = currentTicks + USB_PRESENCE_INTERVAL_MS;
+        *nextPresenceCheck = currentTicks + kUsbPresenceIntervalMs;
 
         if (
             connection->isConnected &&
@@ -768,7 +768,7 @@ static void pollUsbPresence(
             !isUsbDevicePresent(*usbScanResult, *connectedDevice)
         ) {
             oscilloscope::usb::disconnectFromDevice(connection);
-            *connectedDevice = EMPTY_DEVICE_INFO;
+            *connectedDevice = kEmptyDeviceInfo;
             *deviceWasDisconnected = true;
             *deviceStatus = "Device disconnected";
         }
@@ -809,7 +809,7 @@ static void updateDemoMode(
             const SUsbConnectionResult disconnectResult =
                 oscilloscope::usb::disconnectFromDevice(connection);
 
-            *connectedDevice = EMPTY_DEVICE_INFO;
+            *connectedDevice = kEmptyDeviceInfo;
             if (!disconnectResult.errorMessage.empty()) {
                 *deviceStatus = formatUsbConnectionError(
                     "Disconnect",

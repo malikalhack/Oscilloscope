@@ -27,6 +27,12 @@ Records key decisions, structural changes, and completed development stages.
 - Added deterministic CTest coverage for state parsing, trigger decoding,
   channel order, and malformed capture buffers.
 
+### Code style - Immutable object naming
+
+- Reserved `UPPER_CASE` for preprocessor macros.
+- Renamed immutable module objects to the `kPascalCase` convention while
+  retaining `const` storage and unchanged runtime behavior.
+
 ## 2026-08-27
 
 ### Project inception
