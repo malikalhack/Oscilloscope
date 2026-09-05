@@ -45,6 +45,7 @@ set(SOURCES_LIST
     usb/src/firmware_loader.cpp
     capture/src/acquisition_loop.cpp
     capture/src/raw_packet_queue.cpp
+    capture/src/waveform_parser.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -58,10 +59,15 @@ set(HEADERS_LIST
     usb/inc/firmware_loader.h
     capture/inc/acquisition_loop.h
     capture/inc/raw_packet_queue.h
+    capture/inc/waveform_parser.h
 )
 
-set(TEST_SOURCES_LIST
+set(RAW_PACKET_QUEUE_TEST_SOURCES_LIST
     tests/raw_packet_queue_test.cpp
+)
+
+set(WAVEFORM_PARSER_TEST_SOURCES_LIST
+    tests/waveform_parser_test.cpp
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -110,7 +116,7 @@ if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     add_executable(raw_packet_queue_tests
-        ${TEST_SOURCES_LIST}
+        ${RAW_PACKET_QUEUE_TEST_SOURCES_LIST}
         capture/src/raw_packet_queue.cpp
     )
     target_include_directories(raw_packet_queue_tests PRIVATE
@@ -120,6 +126,16 @@ if(BUILD_TESTING)
     enable_project_warnings(raw_packet_queue_tests)
     add_test(NAME raw_packet_queue COMMAND raw_packet_queue_tests)
     add_dependencies(${APP_NAME} raw_packet_queue_tests)
+    add_executable(waveform_parser_tests
+        ${WAVEFORM_PARSER_TEST_SOURCES_LIST}
+        capture/src/waveform_parser.cpp
+    )
+    target_include_directories(waveform_parser_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/capture/inc
+    )
+    enable_project_warnings(waveform_parser_tests)
+    add_test(NAME waveform_parser COMMAND waveform_parser_tests)
+    add_dependencies(${APP_NAME} waveform_parser_tests)
     add_test(
         NAME release_updater
         COMMAND ${Python3_EXECUTABLE}

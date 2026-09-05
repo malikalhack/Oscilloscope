@@ -9,14 +9,23 @@ Records key decisions, structural changes, and completed development stages.
 
 ### Stage 4 preparation - Release metadata coverage
 
-- Registered standalone C++ test sources in `TEST_SOURCES_LIST` in the CMake
-  build configuration.
+- Registered standalone C++ test sources in dedicated CMake source lists.
 - Extended the release updater to discover C++ test sources and update their
   `@version` metadata together with production sources.
 - Added deterministic CTest coverage that runs the updater in an isolated copy
   of the project and verifies test-source version updates.
 - Corrected the documented DSO-2250 endpoint configuration to interface 0,
   alternate setting 1.
+
+### Stage 4 - Sample parser foundation
+
+- Added pure DSO-2250 parser functions for capture-state responses and complete
+  interleaved two-channel waveform buffers.
+- Preserved the legacy byte layout: each sample pair is CH2 followed by CH1.
+- Preserved the legacy capture-state trigger-point transformation in the new,
+  Qt-independent parser.
+- Added deterministic CTest coverage for state parsing, trigger decoding,
+  channel order, and malformed capture buffers.
 
 ## 2026-08-27
 

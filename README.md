@@ -17,8 +17,9 @@ The application currently provides:
 - Start/Stop-controlled endpoint polling;
 - bounded USB error recovery and safe device-loss handling.
 
-Waveform reads, sample decoding, and live waveform rendering are not yet
-implemented.
+The DSO-2250 capture-state response and its two-channel interleaved sample
+format are decoded by deterministic, hardware-independent parser functions.
+Waveform reads and live waveform rendering are not yet implemented.
 
 ## Planned Stack
 
@@ -194,7 +195,7 @@ The script synchronizes:
 
 - the CMake project version in `CMakeLists.txt`;
 - the `@version` field in `app/main.cpp`;
-- the `@version` field in C++ test sources registered in `TEST_SOURCES_LIST`;
+- the `@version` field in C++ test sources registered in CMake source lists;
 - the `VERSION_MAJOR`, `VERSION_MINOR`, and `VERSION_PATCH` macros;
 - the embedded `FileVersion` and `ProductVersion` strings;
 - the version shown in `README.md`, `docs/mainpage.md`, and `docs/Doxyfile`.

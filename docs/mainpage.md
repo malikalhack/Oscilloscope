@@ -27,6 +27,7 @@ libusb for communication with supported instruments.
 - bounded buffering between USB reads and packet processing;
 - capture-state polling through vendor control requests and bulk endpoints;
 - bounded USB error recovery and safe device-loss handling.
+- deterministic DSO-2250 capture-state and two-channel sample parsing.
 
 ## Architecture
 
@@ -76,7 +77,7 @@ complete installation, build, and run instructions.
 
 ## Planned work
 
-The next tasks are decoding capture responses and sample packets, reading
-waveform data, and displaying live waveforms. Instrument controls, broader
+The next tasks are reading waveform data and displaying live waveforms.
+Instrument controls, broader
 recovery behavior, and persistent configuration follow in later milestones.
 

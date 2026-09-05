@@ -22,6 +22,7 @@ def main() -> int:
             "capture",
             "docs",
             "tests/raw_packet_queue_test.cpp",
+            "tests/waveform_parser_test.cpp",
             "usb",
         ):
             source_path = source_directory / path
@@ -43,12 +44,16 @@ def main() -> int:
             cwd=project_directory,
             check=False,
         )
-        test_source = project_directory / "tests/raw_packet_queue_test.cpp"
         expected_header = " * @version {}".format(expected_version)
 
         if (
             (completed_process.returncode == 0) and
-            (expected_header in test_source.read_text(encoding="utf-8"))
+            (expected_header in (
+                project_directory / "tests/raw_packet_queue_test.cpp"
+            ).read_text(encoding="utf-8")) and
+            (expected_header in (
+                project_directory / "tests/waveform_parser_test.cpp"
+            ).read_text(encoding="utf-8"))
         ):
             result = 0
 
