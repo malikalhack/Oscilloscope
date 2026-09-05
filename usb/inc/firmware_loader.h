@@ -48,8 +48,8 @@ struct SFirmwarePaths {
 
 /** @brief Holds the result of a firmware upload attempt */
 struct SFirmwareLoadResult {
-    EFirmwareLoadStatus status; /**< Upload outcome */
     std::string errorMessage;   /**< Details when applicable */
+    EFirmwareLoadStatus status; /**< Upload outcome */
 };
 
 /********************* Application Programming Interface **********************/

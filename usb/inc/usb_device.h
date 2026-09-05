@@ -57,32 +57,48 @@ enum class EConnectionStatus {
 
 /** @brief Identifies one supported USB oscilloscope instance */
 struct SUsbDeviceInfo {
+    const char *modelName; /**< Supported model display name */
     uint16_t vendorId;     /**< USB vendor identifier */
     uint16_t productId;    /**< USB product identifier */
     uint8_t busNumber;     /**< USB bus number */
     uint8_t deviceAddress; /**< Address assigned on the USB bus */
-    const char *modelName; /**< Supported model display name */
 };
 
 /** @brief Holds the outcome and matching devices from a USB scan */
 struct SUsbScanResult {
-    EScanStatus status;                  /**< Overall scan status */
     std::vector<SUsbDeviceInfo> devices; /**< All supported devices found */
     std::string errorMessage;            /**< libusb error for a failed scan */
+    EScanStatus status;                  /**< Overall scan status */
+};
+
+/** @brief Describes the capture protocol for one supported device family */
+struct SUsbCaptureProtocol {
+    size_t sampleCount;            /**< Samples in each enabled channel */
+    uint16_t bulkInPacketLength;   /**< Bulk IN packet size in bytes */
+    uint8_t bulkOutEndpoint;       /**< Bulk OUT endpoint address */
+    uint8_t bulkInEndpoint;        /**< Bulk IN endpoint address */
+    uint8_t channelCount;          /**< Interleaved analog channel count */
+    bool channelOneSecond;         /**< True when each pair is CH2 then CH1 */
+    uint8_t captureCompleteState;  /**< State value indicating a full buffer */
+    uint8_t captureStateCommand;   /**< Command byte that reads capture state */
+    uint8_t channelDataCommand;    /**< Command byte that reads sample data */
+    uint8_t captureStartCommand;   /**< Command byte that starts capture */
+    uint8_t triggerEnabledCommand; /**< Command byte that enables trigger */
 };
 
 /** @brief Describes an active USB connection to a supported device */
 struct SUsbConnection {
     libusb_context *context;       /**< libusb connection context */
     libusb_device_handle *handle;  /**< Open USB device handle */
+    SUsbCaptureProtocol captureProtocol; /**< Protocol selected for device */
     uint8_t interfaceNumber;       /**< Claimed interface number */
     bool isConnected;              /**< True once the interface is claimed */
 };
 
 /** @brief Holds the result of a connection lifecycle operation */
 struct SUsbConnectionResult {
-    EConnectionStatus status;   /**< Operation outcome */
     std::string errorMessage;   /**< libusb error string when applicable */
+    EConnectionStatus status;   /**< Operation outcome */
 };
 
 /** @brief Describes the outcome of a bulk endpoint transfer */

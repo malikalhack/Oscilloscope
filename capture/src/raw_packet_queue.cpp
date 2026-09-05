@@ -44,8 +44,12 @@ RawPacketQueue::RawPacketQueue(const size_t capacity) :
 
 /*----------------------------------------------------------------------------*/
 
-/** @fn bool RawPacketQueue::push(const uint8_t *data, size_t length) */
-bool RawPacketQueue::push(const uint8_t *data, const size_t length) {
+/** @fn bool RawPacketQueue::push(const uint8_t *data, size_t length, uint32_t) */
+bool RawPacketQueue::push(
+    const uint8_t *data,
+    const size_t length,
+    const uint32_t triggerPoint
+) {
     bool accepted = false;
     std::lock_guard<std::mutex> lock(mutex);
 
@@ -54,7 +58,7 @@ bool RawPacketQueue::push(const uint8_t *data, const size_t length) {
         !packets.empty() &&
         (data != NULL) &&
         (length > 0U) &&
-        (length <= RAW_USB_PACKET_MAX_SIZE)
+        (length <= kRawUsbPacketMaxSize)
     ) {
         if (packetCount == packets.size()) {
             readIndex = (readIndex + 1U) % packets.size();
@@ -64,6 +68,7 @@ bool RawPacketQueue::push(const uint8_t *data, const size_t length) {
 
         std::copy(data, data + length, packets[writeIndex].payload.begin());
         packets[writeIndex].validLength = length;
+        packets[writeIndex].triggerPoint = triggerPoint;
         writeIndex = (writeIndex + 1U) % packets.size();
         ++packetCount;
         accepted = true;

@@ -66,12 +66,19 @@ static bool testFifoAndLength() {
     SRawUsbPacket packet;
     bool result = true;
 
-    result = expect(queue.push(first, sizeof(first)), "push first packet") &&
+    result = expect(
+        queue.push(first, sizeof(first), 101U),
+        "push first packet"
+    ) &&
         result;
-    result = expect(queue.push(second, sizeof(second)), "push second packet")
-        && result;
+    result = expect(
+        queue.push(second, sizeof(second), 202U),
+        "push second packet"
+    ) && result;
     result = expect(queue.waitPop(&packet), "pop first packet") && result;
     result = expect(packet.validLength == sizeof(first), "first length") &&
+        result;
+    result = expect(packet.triggerPoint == 101U, "first trigger point") &&
         result;
     result = expect(
         (packet.payload[0] == first[0]) &&
@@ -80,6 +87,8 @@ static bool testFifoAndLength() {
     ) && result;
     result = expect(queue.waitPop(&packet), "pop second packet") && result;
     result = expect(packet.validLength == sizeof(second), "second length") &&
+        result;
+    result = expect(packet.triggerPoint == 202U, "second trigger point") &&
         result;
     result = expect(
         (packet.payload[0] == second[0]) &&
