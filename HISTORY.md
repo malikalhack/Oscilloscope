@@ -14,8 +14,8 @@ Records key decisions, structural changes, and completed development stages.
   `@version` metadata together with production sources.
 - Added deterministic CTest coverage that runs the updater in an isolated copy
   of the project and verifies test-source version updates.
-- Corrected the documented DSO-2250 endpoint configuration to interface 0,
-  alternate setting 1.
+- Corrected the documented DSO-2250 operational endpoint configuration to
+  interface 0, alternate setting 0.
 
 ### Stage 4 - Sample parser foundation
 
