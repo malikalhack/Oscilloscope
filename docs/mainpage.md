@@ -28,7 +28,7 @@ libusb for communication with supported instruments.
 - capture-state polling through vendor control requests and bulk endpoints;
 - bounded USB error recovery and safe device-loss handling.
 - deterministic DSO-2250 capture-state and two-channel sample parsing.
-- complete 32,768-sample two-channel capture reads after a successful trigger.
+- complete 32768-sample two-channel capture reads after a successful trigger.
 - thread-safe publication of the latest decoded waveform and trigger point.
 - a per-device capture profile selected from the supported-device table.
 

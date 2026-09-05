@@ -32,7 +32,7 @@ Records key decisions, structural changes, and completed development stages.
 - Start acquisition with the legacy capture-start and trigger-enable command
   sequence before capture-state polling begins.
 - On a complete DSO-2250 capture-state response, read the fixed two-channel
-  32,768-sample buffer as 128 consecutive 512-byte bulk packets.
+  32768-sample buffer as 128 consecutive 512-byte bulk packets.
 - Stop incomplete waveform publication at the first failed packet and preserve
   the existing bounded recovery and device-loss behavior.
 - Restart capture and re-enable the trigger only after a complete buffer was

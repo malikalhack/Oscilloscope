@@ -101,7 +101,7 @@ using oscilloscope::usb::SUsbScanResult;
 static const uint32_t kUsbPresenceIntervalMs = 1000U;
 
 /** @brief Cleared device identity used to reset connection bookkeeping */
-static const SUsbDeviceInfo kEmptyDeviceInfo = {NULL, 0U, 0U, 0U, 0U};
+static const SUsbDeviceInfo kEmptyDeviceInfo = { NULL, 0U, 0U, 0U, 0U };
 
 #ifdef __GNUC__  // GCC/MinGW only
 const char kVersionInfo[] __attribute__((section(".version"), used)) =
