@@ -86,6 +86,7 @@
 #include "usb_device.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
+using oscilloscope::capture::SWaveformSamples;
 using oscilloscope::capture::EAcquisitionOperation;
 using oscilloscope::capture::EAcquisitionState;
 using oscilloscope::usb::EScanStatus;
@@ -322,6 +323,9 @@ int main (void) {
     );
     uint32_t nextUsbPresenceCheck =
         SDL_GetTicks() + kUsbPresenceIntervalMs;
+    SWaveformSamples latestWaveform{};
+    uint32_t latestTriggerPoint = 0U;
+    bool hasWaveform = false;
     const char* timebases[] = {
         "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
         "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
@@ -363,6 +367,14 @@ int main (void) {
             &nextUsbPresenceCheck,
             &deviceStatus
         );
+
+        if (
+            oscilloscope::capture::getLatestWaveform(
+                &acquisitionLoop, &latestWaveform, &latestTriggerPoint
+            )
+        ) {
+            hasWaveform = true;
+        }
 
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
@@ -550,9 +562,24 @@ int main (void) {
         }
         ImGui::EndChild();
 
+        char waveformStatus[64];
+
+        if (hasWaveform) {
+            snprintf(
+                waveformStatus,
+                sizeof(waveformStatus),
+                "Waveform %zu samples (trigger %u)",
+                latestWaveform.sampleCount,
+                static_cast<unsigned int>(latestTriggerPoint)
+            );
+        }
+        else {
+            snprintf(waveformStatus, sizeof(waveformStatus), "Waveform none");
+        }
+
         ImGui::SetCursorScreenPos(statusPosition);
         ImGui::Text(
-            "%s | %s | %s | CH1 %s | CH2 %s",
+            "%s | %s | %s | CH1 %s | CH2 %s | %s",
             acquisitionRunning
                 ? (acquisitionLoop.status.state.load() ==
                     EAcquisitionState::eRecovering
@@ -561,7 +588,8 @@ int main (void) {
             demoMode ? "Demo mode" : "Live mode",
             deviceStatus.c_str(),
             channelEnabled[0] ? "on" : "off",
-            channelEnabled[1] ? "on" : "off"
+            channelEnabled[1] ? "on" : "off",
+            waveformStatus
         );
         ImGui::End();
 
