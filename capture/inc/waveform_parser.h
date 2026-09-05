@@ -1,6 +1,6 @@
 /**
  * @file    waveform_parser.h
- * @version 0.2.6
+ * @version 0.2.7
  * @authors Anton Chernov
  * @date    2026-09-05
  * @date    @showdate "%Y-%m-%d"
