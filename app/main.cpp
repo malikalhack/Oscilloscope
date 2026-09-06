@@ -74,6 +74,7 @@
 /******************************* Included files ******************************/
 #include <stdio.h>
 #include <string>
+#include <vector>
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -84,16 +85,18 @@
 
 #include "acquisition_loop.h"
 #include "usb_device.h"
+#include "instrument_scaling_profile.h"
 #include "waveform_scaling.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
 using oscilloscope::capture::SWaveformSamples;
 using oscilloscope::capture::EAcquisitionOperation;
 using oscilloscope::capture::EAcquisitionState;
-using oscilloscope::core::kTimebaseSecondsPerDivision;
-using oscilloscope::core::kVoltageScaleVoltsPerDivision;
+using oscilloscope::core::EInstrumentModel;
+using oscilloscope::core::findInstrtScalingProfile;
 using oscilloscope::core::sampleIndexToSeconds;
 using oscilloscope::core::sampleToVolts;
+using oscilloscope::core::SInstrumentScalingProfile;
 using oscilloscope::usb::EScanStatus;
 using oscilloscope::usb::EUsbTransferStatus;
 using oscilloscope::usb::SUsbConnection;
@@ -107,7 +110,8 @@ using oscilloscope::usb::SUsbScanResult;
 static const uint32_t kUsbPresenceIntervalMs = 1000U;
 
 /** @brief Cleared device identity used to reset connection bookkeeping */
-static const SUsbDeviceInfo kEmptyDeviceInfo = { NULL, 0U, 0U, 0U, 0U };
+static const SUsbDeviceInfo kEmptyDeviceInfo =
+    { NULL, EInstrumentModel::eUnknown, 0U, 0U, 0U, 0U };
 
 #ifdef __GNUC__  // GCC/MinGW only
 const char kVersionInfo[] __attribute__((section(".version"), used)) =
@@ -242,6 +246,18 @@ static void pollUsbPresence(
     std::string *deviceStatus
 );
 
+/**
+ * @brief Resolves the display-scaling profile for the active instrument
+ * @param[in] connectedDevice Currently connected device identity, if any
+ * @param[in] usbScanResult Latest supported-device scan result
+ * @returns Matching profile; falls back to the DSO-2250 profile so the UI
+ *          always has scale steps to display, even before a connection
+ */
+static const SInstrumentScalingProfile* resolveActiveScalingProfile(
+    const SUsbDeviceInfo &connectedDevice,
+    const SUsbScanResult &usbScanResult
+);
+
 /********************* Application Programming Interface *********************/
 
 /** @fn main */
@@ -331,27 +347,9 @@ int main (void) {
     SWaveformSamples latestWaveform{};
     uint32_t latestTriggerPoint = 0U;
     bool hasWaveform = false;
-    const char* timebases[] = {
-        "4 ns/div", "20 ns/div", "100 ns/div", "1 us/div", "10 us/div",
-        "100 us/div", "1 ms/div", "10 ms/div", "100 ms/div", "1 s/div"
-    };
-    const char* voltageScales[] = {
-        "20 mV/div", "50 mV/div", "100 mV/div", "200 mV/div",
-        "500 mV/div", "1 V/div", "2 V/div", "5 V/div"
-    };
 
-    static_assert(
-        IM_ARRAYSIZE(timebases) ==
-            sizeof(kTimebaseSecondsPerDivision) /
-                sizeof(kTimebaseSecondsPerDivision[0]),
-        "Timebase labels must match the scaling table"
-    );
-    static_assert(
-        IM_ARRAYSIZE(voltageScales) ==
-            sizeof(kVoltageScaleVoltsPerDivision) /
-                sizeof(kVoltageScaleVoltsPerDivision[0]),
-        "Voltage scale labels must match the scaling table"
-    );
+    /* Timebase/voltage-scale labels and values come from the active
+     * instrument's scaling profile, resolved once per frame below. */
 
     while (running) {
         SDL_Event event;
@@ -549,9 +547,41 @@ int main (void) {
             }
             ImGui::EndDisabled();
         }
+
+        const SInstrumentScalingProfile *scalingProfile =
+            resolveActiveScalingProfile(connectedDevice, usbScanResult);
+        std::vector<const char*> timebaseLabels;
+        std::vector<const char*> voltageScaleLabels;
+
+        for (size_t i = 0U; i < scalingProfile->timebaseStepCount; ++i) {
+            timebaseLabels.push_back(scalingProfile->timebaseSteps[i].label);
+        }
+        for (size_t i = 0U; i < scalingProfile->voltageStepCount; ++i) {
+            voltageScaleLabels.push_back(
+                scalingProfile->voltageSteps[i].label
+            );
+        }
+        if (timebase >= static_cast<int>(timebaseLabels.size())) {
+            timebase = static_cast<int>(timebaseLabels.size()) - 1;
+        }
+        for (int channel = 0; channel < 2; ++channel) {
+            if (
+                voltsPerDivision[channel] >=
+                    static_cast<int>(voltageScaleLabels.size())
+            ) {
+                voltsPerDivision[channel] =
+                    static_cast<int>(voltageScaleLabels.size()) - 1;
+            }
+        }
+
         ImGui::Separator();
         ImGui::TextUnformatted("Horizontal");
-        ImGui::Combo("Timebase", &timebase, timebases, IM_ARRAYSIZE(timebases));
+        ImGui::Combo(
+            "Timebase",
+            &timebase,
+            timebaseLabels.data(),
+            static_cast<int>(timebaseLabels.size())
+        );
         ImGui::Separator();
         for (int channel = 0; channel < 2; ++channel) {
             ImGui::PushID(channel);
@@ -560,8 +590,8 @@ int main (void) {
             ImGui::Combo(
                 "Scale",
                 &voltsPerDivision[channel],
-                voltageScales,
-                IM_ARRAYSIZE(voltageScales)
+                voltageScaleLabels.data(),
+                static_cast<int>(voltageScaleLabels.size())
             );
             ImGui::PopID();
         }
@@ -592,16 +622,23 @@ int main (void) {
 
             const double channelOneVolts = sampleToVolts(
                 latestWaveform.channelOne[triggerSampleIndex],
-                kVoltageScaleVoltsPerDivision[voltsPerDivision[0]]
+                scalingProfile->voltageSteps[voltsPerDivision[0]]
+                    .valuePerDivision,
+                scalingProfile->adcCenterValue,
+                scalingProfile->adcCountsPerDivision
             );
             const double channelTwoVolts = sampleToVolts(
                 latestWaveform.channelTwo[triggerSampleIndex],
-                kVoltageScaleVoltsPerDivision[voltsPerDivision[1]]
+                scalingProfile->voltageSteps[voltsPerDivision[1]]
+                    .valuePerDivision,
+                scalingProfile->adcCenterValue,
+                scalingProfile->adcCountsPerDivision
             );
             const double triggerSeconds = sampleIndexToSeconds(
                 triggerSampleIndex,
                 latestWaveform.sampleCount,
-                kTimebaseSecondsPerDivision[timebase]
+                scalingProfile->timebaseSteps[timebase].valuePerDivision,
+                scalingProfile->horizontalDivisions
             );
 
             snprintf(
@@ -683,6 +720,32 @@ static bool isUsbDevicePresent(
 }
 /*----------------------------------------------------------------------------*/
 
+/** @fn resolveActiveScalingProfile */
+static const SInstrumentScalingProfile* resolveActiveScalingProfile(
+    const SUsbDeviceInfo &connectedDevice,
+    const SUsbScanResult &usbScanResult
+) {
+    EInstrumentModel model = connectedDevice.model;
+
+    if (model == EInstrumentModel::eUnknown) {
+        if (!usbScanResult.devices.empty()) {
+            model = usbScanResult.devices.front().model;
+        }
+        else {
+            model = EInstrumentModel::eHantekDso2250;
+        }
+    }
+
+    const SInstrumentScalingProfile *profile = findInstrtScalingProfile(model);
+
+    if (profile == NULL) {
+        profile = findInstrtScalingProfile(EInstrumentModel::eHantekDso2250);
+    }
+
+    return profile;
+}
+/*----------------------------------------------------------------------------*/
+
 /** @fn formatUsbConnectionStatus */
 static std::string formatUsbConnectionStatus(
     const SUsbScanResult &scanResult,
@@ -752,30 +815,51 @@ static std::string formatAcquisitionError(
     }
 
     switch (operation) {
-        case EAcquisitionOperation::eBeginCommand:
+        case EAcquisitionOperation::eBeginCmd:
             status += " while beginning command";
             break;
-        case EAcquisitionOperation::eSpeedBeforeCommand:
+        case EAcquisitionOperation::eSpeedBeforeCmd:
         case EAcquisitionOperation::eSpeedBeforeResponse:
             status += " while checking connection speed";
             break;
-        case EAcquisitionOperation::eCaptureStateCommand:
+        case EAcquisitionOperation::eCaptureStateCmd:
             status += " while sending capture-state command";
             break;
         case EAcquisitionOperation::eCaptureStateResponse:
             status += " while reading capture state";
             break;
-        case EAcquisitionOperation::eChannelDataCommand:
+        case EAcquisitionOperation::eChannelDataCmd:
             status += " while requesting channel data";
             break;
         case EAcquisitionOperation::eChannelDataResponse:
             status += " while reading channel data";
             break;
-        case EAcquisitionOperation::eCaptureStartCommand:
+        case EAcquisitionOperation::eCaptureStartCmd:
             status += " while starting capture";
             break;
-        case EAcquisitionOperation::eTriggerEnabledCommand:
+        case EAcquisitionOperation::eTriggerEnabledCmd:
             status += " while enabling trigger";
+            break;
+        case EAcquisitionOperation::eForceTriggerCmd:
+            status += " while forcing trigger";
+            break;
+        case EAcquisitionOperation::eSetFilterCmd:
+            status += " while setting filters";
+            break;
+        case EAcquisitionOperation::eSetTriggerNSampleRateCmd:
+            status += " while setting trigger/sample rate";
+            break;
+        case EAcquisitionOperation::eSetVoltageNCouplingCmd:
+            status += " while setting voltage/coupling";
+            break;
+        case EAcquisitionOperation::eSetRelaysCmd:
+            status += " while setting input relays";
+            break;
+        case EAcquisitionOperation::eGetChannelLevelCmd:
+            status += " while reading channel-level calibration";
+            break;
+        case EAcquisitionOperation::eSetOffsetCmd:
+            status += " while setting channel/trigger offset";
             break;
         case EAcquisitionOperation::eNone:
         default:

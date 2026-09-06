@@ -48,6 +48,7 @@ set(SOURCES_LIST
     capture/src/waveform_parser.cpp
     capture/src/waveform_ring_buffer.cpp
     core/src/waveform_scaling.cpp
+    core/src/instrument_scaling_profile.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
@@ -64,6 +65,8 @@ set(HEADERS_LIST
     capture/inc/waveform_parser.h
     capture/inc/waveform_ring_buffer.h
     core/inc/waveform_scaling.h
+    core/inc/instrument_model.h
+    core/inc/instrument_scaling_profile.h
 )
 
 set(RAW_PACKET_QUEUE_TEST_SOURCES_LIST
@@ -80,6 +83,10 @@ set(WAVEFORM_RING_BUFFER_TEST_SOURCES_LIST
 
 set(WAVEFORM_SCALING_TEST_SOURCES_LIST
     tests/waveform_scaling_test.cpp
+)
+
+set(INSTRUMENT_SCALING_PROFILE_TEST_SOURCES_LIST
+    tests/instrument_scaling_profile_test.cpp
 )
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -170,6 +177,19 @@ if(BUILD_TESTING)
     enable_project_warnings(waveform_scaling_tests)
     add_test(NAME waveform_scaling COMMAND waveform_scaling_tests)
     add_dependencies(${APP_NAME} waveform_scaling_tests)
+    add_executable(instrument_scaling_profile_tests
+        ${INSTRUMENT_SCALING_PROFILE_TEST_SOURCES_LIST}
+        core/src/instrument_scaling_profile.cpp
+    )
+    target_include_directories(instrument_scaling_profile_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/inc
+    )
+    enable_project_warnings(instrument_scaling_profile_tests)
+    add_test(
+        NAME instrument_scaling_profile
+        COMMAND instrument_scaling_profile_tests
+    )
+    add_dependencies(${APP_NAME} instrument_scaling_profile_tests)
     add_test(
         NAME release_updater
         COMMAND ${Python3_EXECUTABLE}

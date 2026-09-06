@@ -215,10 +215,20 @@ and restores the previous files if the build fails.
 CI can update only the version metadata by passing `--skip-build`.
 
 
+## Known Issues
+
+- Live capture on a physical Hantek DSO-2250 never reports a waveform:
+  `GetCaptureState` polling stays at the empty-buffer state, so no channel
+  data is read. Demo mode and the full CTest suite are unaffected. See
+  `HISTORY.md` ("Known issue - live capture on real DSO-2250 hardware
+  reports no waveform") for the investigation and ruled-out causes.
+
 ## Next Steps
 
-1. Render live and demo waveforms on the display grid.
-2. Implement the two-channel model, timebase, and instrument controls.
+1. Diagnose the live-capture-never-completes issue on real DSO-2250
+   hardware.
+2. Render live and demo waveforms on the display grid.
+3. Implement the two-channel model, timebase, and instrument controls.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.

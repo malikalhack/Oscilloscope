@@ -28,13 +28,15 @@
 /** @fn oscilloscope::core::sampleToVolts */
 double oscilloscope::core::sampleToVolts(
     uint8_t rawSample,
-    double voltsPerDivision
+    double voltsPerDivision,
+    uint8_t adcCenterValue,
+    double adcCountsPerDivision
 ) {
     const double centeredCounts =
         static_cast<double>(rawSample) -
-        static_cast<double>(kAdcCenterValue);
+        static_cast<double>(adcCenterValue);
 
-    return (centeredCounts / kAdcCountsPerDivision) * voltsPerDivision;
+    return (centeredCounts / adcCountsPerDivision) * voltsPerDivision;
 }
 /*----------------------------------------------------------------------------*/
 
@@ -42,13 +44,14 @@ double oscilloscope::core::sampleToVolts(
 double oscilloscope::core::sampleIndexToSeconds(
     size_t sampleIndex,
     size_t sampleCount,
-    double secondsPerDivision
+    double secondsPerDivision,
+    double horizontalDivisions
 ) {
     double ret_val = 0.0;
 
     if (sampleCount != 0U) {
         const double captureSeconds =
-            secondsPerDivision * kHorizontalDivisions;
+            secondsPerDivision * horizontalDivisions;
 
         ret_val =
             (static_cast<double>(sampleIndex) /

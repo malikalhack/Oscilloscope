@@ -35,6 +35,14 @@ using oscilloscope::core::sampleToVolts;
 
 static const double kEpsilon = 1.0e-9;
 
+/* Fixture values mirror the Hantek DSO-2250 profile (see
+ * core/src/instrument_scaling_profile.cpp) for realistic numbers, but the
+ * functions under test take them as plain parameters and do not read any
+ * instrument-specific table themselves. */
+static const uint8_t kAdcCenterValue = 128U;      /**< Raw sample = 0V */
+static const double kAdcCountsPerDivision = 32.0; /**< 256 counts / 8 divs */
+static const double kHorizontalDivisions = 10.0;  /**< Grid divs, full capture */
+
 /***************************** Private prototypes *****************************/
 
 static bool expect(bool condition, const char *message);
@@ -68,27 +76,44 @@ static bool testSampleToVolts() {
 
     passed =
         expect(
-            nearlyEqual(sampleToVolts(128U, 1.0), 0.0),
+            nearlyEqual(
+                sampleToVolts(
+                    kAdcCenterValue, 1.0, kAdcCenterValue, kAdcCountsPerDivision
+                ),
+                0.0
+            ),
             "Midpoint sample must map to zero volts"
         ) && passed;
     passed =
         expect(
-            nearlyEqual(sampleToVolts(0U, 1.0), -4.0),
+            nearlyEqual(
+                sampleToVolts(0U, 1.0, kAdcCenterValue, kAdcCountsPerDivision),
+                -4.0
+            ),
             "Minimum sample must map to -4 divisions worth of volts"
         ) && passed;
     passed =
         expect(
-            nearlyEqual(sampleToVolts(255U, 1.0), 3.96875),
+            nearlyEqual(
+                sampleToVolts(255U, 1.0, kAdcCenterValue, kAdcCountsPerDivision),
+                3.96875
+            ),
             "Maximum sample must map to the topmost division fraction"
         ) && passed;
     passed =
         expect(
-            nearlyEqual(sampleToVolts(160U, 0.5), 0.5),
+            nearlyEqual(
+                sampleToVolts(160U, 0.5, kAdcCenterValue, kAdcCountsPerDivision),
+                0.5
+            ),
             "One division above center must scale with volts/division"
         ) && passed;
     passed =
         expect(
-            nearlyEqual(sampleToVolts(96U, 0.5), -0.5),
+            nearlyEqual(
+                sampleToVolts(96U, 0.5, kAdcCenterValue, kAdcCountsPerDivision),
+                -0.5
+            ),
             "One division below center must scale with volts/division"
         ) && passed;
 
@@ -102,13 +127,16 @@ static bool testSampleIndexToSeconds() {
 
     passed =
         expect(
-            nearlyEqual(sampleIndexToSeconds(0U, 1000U, 1.0e-3), 0.0),
+            nearlyEqual(
+                sampleIndexToSeconds(0U, 1000U, 1.0e-3, kHorizontalDivisions),
+                0.0
+            ),
             "First sample must be at time zero"
         ) && passed;
     passed =
         expect(
             nearlyEqual(
-                sampleIndexToSeconds(500U, 1000U, 1.0e-3),
+                sampleIndexToSeconds(500U, 1000U, 1.0e-3, kHorizontalDivisions),
                 5.0e-3
             ),
             "Midpoint sample must be at half the total capture time"
@@ -116,14 +144,17 @@ static bool testSampleIndexToSeconds() {
     passed =
         expect(
             nearlyEqual(
-                sampleIndexToSeconds(1000U, 1000U, 1.0e-3),
+                sampleIndexToSeconds(1000U, 1000U, 1.0e-3, kHorizontalDivisions),
                 10.0e-3
             ),
             "Sample index at sampleCount must reach the full capture time"
         ) && passed;
     passed =
         expect(
-            nearlyEqual(sampleIndexToSeconds(5U, 0U, 1.0e-3), 0.0),
+            nearlyEqual(
+                sampleIndexToSeconds(5U, 0U, 1.0e-3, kHorizontalDivisions),
+                0.0
+            ),
             "Zero sampleCount must not divide by zero"
         ) && passed;
 

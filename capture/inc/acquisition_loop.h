@@ -49,15 +49,22 @@ enum class EAcquisitionState {
 /** @brief Identifies the transfer that failed in a polling transaction */
 enum class EAcquisitionOperation {
     eNone,                 /**< No transfer has failed */
-    eBeginCommand,         /**< Begin-command control write */
-    eSpeedBeforeCommand,   /**< Speed control read before command write */
-    eCaptureStateCommand,  /**< Capture-state bulk command write */
+    eBeginCmd,             /**< Begin-command control write */
+    eSpeedBeforeCmd,       /**< Speed control read before command write */
+    eCaptureStateCmd,      /**< Capture-state bulk command write */
     eSpeedBeforeResponse,  /**< Speed control read before response read */
     eCaptureStateResponse, /**< Capture-state bulk response read */
-    eChannelDataCommand,   /**< Channel-data bulk command write */
+    eChannelDataCmd,       /**< Channel-data bulk command write */
     eChannelDataResponse,  /**< Channel-data bulk response read */
-    eCaptureStartCommand,  /**< Capture-start bulk command write */
-    eTriggerEnabledCommand /**< Trigger-enable bulk command write */
+    eCaptureStartCmd,      /**< Capture-start bulk command write */
+    eTriggerEnabledCmd,    /**< Trigger-enable bulk command write */
+    eForceTriggerCmd,      /**< Force-trigger bulk command write */
+    eSetFilterCmd,         /**< Set-filter bulk command write */
+    eSetTriggerNSampleRateCmd, /**< Set-trigger/sample-rate command */
+    eSetVoltageNCouplingCmd,   /**< Set-voltage/coupling command */
+    eSetRelaysCmd,         /**< Set-relays vendor control write */
+    eGetChannelLevelCmd,   /**< Channel-level calibration table read */
+    eSetOffsetCmd          /**< Set-offset vendor control write */
 };
 
 /** @brief Acquisition state safe to read from any thread */

@@ -39,6 +39,7 @@ struct SSupportedDevice {
     const char *modelName;
     const char *firmwareBaseName;
     SUsbCaptureProtocol captureProtocol;
+    core::EInstrumentModel model;
     uint16_t vendorId;
     uint16_t productId;
     uint16_t operationalVendorId;
@@ -48,9 +49,9 @@ struct SSupportedDevice {
 };
 
 /** @brief Delay between scans while waiting for FX2 re-enumeration */
-static const unsigned int kFirmwareReenumerationPollDelayUs = 100000U;
+static const unsigned int kFwReenumPollDelayUs = 100000U;
 /** @brief Maximum scans while waiting for the operational USB device */
-static const unsigned int kFirmwareReenumerationAttempts = 50U;
+static const unsigned int kFwReenumAttempts = 50U;
 
 /****************************** Module variables ******************************/
 
@@ -59,12 +60,16 @@ static const SSupportedDevice kSupportedDevices[] = {
     /* The bootloader exposes the bulk pair on alt setting 1. */
     {
         "Hantek DSO-2250 Bootloader", "DSO2250",
-        { 32768U, 512U, 0x02U, 0x86U, 2U, true, 2U, 6U, 5U, 3U, 4U },
+        { 32768U, 512U, 0x02U, 0x86U, 2U, true, 3U, 6U, 5U, 3U, 4U, 2U, 0U, 1U,
+          7U, 0xB5U, 0xA2U, 0xB4U },
+        core::EInstrumentModel::eHantekDso2250,
         0x04B4U, 0x2250U, 0x04B5U, 0U, 1U, true
     },
     {
         "Hantek DSO-2250", "DSO2250",
-        { 32768U, 512U, 0x02U, 0x86U, 2U, true, 2U, 6U, 5U, 3U, 4U },
+        { 32768U, 512U, 0x02U, 0x86U, 2U, true, 3U, 6U, 5U, 3U, 4U, 2U, 0U, 1U,
+          7U, 0xB5U, 0xA2U, 0xB4U },
+        core::EInstrumentModel::eHantekDso2250,
         0x04B5U, 0x2250U, 0x04B5U, 0U, 0U, false
     }
 };
@@ -206,6 +211,7 @@ SUsbScanResult enumerateSupportedDevices() {
                     if (supportedDevice != NULL) {
                         result.devices.push_back({
                             supportedDevice->modelName,
+                            supportedDevice->model,
                             descriptor.idVendor,
                             descriptor.idProduct,
                             libusb_get_bus_number(deviceList[index]),
@@ -304,12 +310,11 @@ SUsbConnectionResult connectToDevice(
 
                         for (
                             reenumerationAttempt = 0U;
-                            (reenumerationAttempt <
-                                kFirmwareReenumerationAttempts) &&
-                            (device == NULL);
+                            (reenumerationAttempt < kFwReenumAttempts) &&
+                                (device == NULL);
                             ++reenumerationAttempt
                         ) {
-                            usleep(kFirmwareReenumerationPollDelayUs);
+                            usleep(kFwReenumPollDelayUs);
                             deviceCount = libusb_get_device_list(
                                 context,
                                 &deviceList
@@ -379,7 +384,8 @@ SUsbConnectionResult connectToDevice(
                                 );
 
                             if (setInterfaceResult != LIBUSB_SUCCESS) {
-                                result.status = EConnectionStatus::eSetInterfaceFailed;
+                                result.status =
+                                    EConnectionStatus::eSetInterfaceFailed;
                                 result.errorMessage =
                                     libusb_error_name(setInterfaceResult);
                                 libusb_release_interface(
@@ -489,6 +495,7 @@ bool getConnectedDeviceInfo(
             if (supportedDevice != NULL) {
                 *deviceInfo = {
                     supportedDevice->modelName,
+                    supportedDevice->model,
                     descriptor.idVendor,
                     descriptor.idProduct,
                     libusb_get_bus_number(device),
@@ -725,7 +732,7 @@ static SFirmwarePaths resolveFirmwarePaths(
     const SSupportedDevice &supportedDevice
 ) {
     static const char* const candidateDirs[] = {
-        "firmware", "../firmware", "../../firmware"
+        "firmware", "../firmware", "/usr/share/HantekDSO"
     };
     SFirmwarePaths paths;
     const char *firmwareDir = getenv("OSCILLOSCOPE_FIRMWARE_DIR");

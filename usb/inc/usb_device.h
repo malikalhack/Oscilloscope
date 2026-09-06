@@ -30,6 +30,8 @@
 
 #include <libusb-1.0/libusb.h>
 
+#include "instrument_model.h"
+
 /********************************* Definitions ********************************/
 
 namespace oscilloscope {
@@ -57,11 +59,12 @@ enum class EConnectionStatus {
 
 /** @brief Identifies one supported USB oscilloscope instance */
 struct SUsbDeviceInfo {
-    const char *modelName; /**< Supported model display name */
-    uint16_t vendorId;     /**< USB vendor identifier */
-    uint16_t productId;    /**< USB product identifier */
-    uint8_t busNumber;     /**< USB bus number */
-    uint8_t deviceAddress; /**< Address assigned on the USB bus */
+    const char *modelName;              /**< Supported model display name */
+    core::EInstrumentModel model;       /**< Model identifier for lookups */
+    uint16_t vendorId;                  /**< USB vendor identifier */
+    uint16_t productId;                 /**< USB product identifier */
+    uint8_t busNumber;                  /**< USB bus number */
+    uint8_t deviceAddress;              /**< Address assigned on the USB bus */
 };
 
 /** @brief Holds the outcome and matching devices from a USB scan */
@@ -82,8 +85,21 @@ struct SUsbCaptureProtocol {
     uint8_t captureCompleteState;  /**< State value indicating a full buffer */
     uint8_t captureStateCommand;   /**< Command byte that reads capture state */
     uint8_t channelDataCommand;    /**< Command byte that reads sample data */
-    uint8_t captureStartCommand;   /**< Command byte that starts capture */
-    uint8_t triggerEnabledCommand; /**< Command byte that enables trigger */
+    uint8_t captureStartCmd;   /**< Command byte that starts capture */
+    uint8_t triggerEnabledCmd; /**< Command byte that enables trigger */
+    uint8_t forceTriggerCmd;   /**< Command byte that forces a trigger */
+    uint8_t setFilterCmd;      /**< Command byte that sets channel filters */
+    uint8_t setTriggerNSampleRateCmd; /**< Command byte that sets
+                                                  trigger/sample-rate regs */
+    uint8_t setVoltageNCouplingCmd;   /**< Command byte that sets
+                                                  voltage range/coupling */
+    uint8_t setRelaysControlRequest; /**< Vendor control request that sets
+                                           attenuator/coupling relays */
+    uint8_t controlCommandRequest;    /**< Vendor control request that reads
+                                           device tables (selected by
+                                           wValue, e.g. channel-level data) */
+    uint8_t setOffsetControlRequest;  /**< Vendor control request that sets
+                                           the channel/trigger offset DACs */
 };
 
 /** @brief Describes an active USB connection to a supported device */
