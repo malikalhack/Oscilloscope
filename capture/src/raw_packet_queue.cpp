@@ -1,6 +1,6 @@
 /**
  * @file    raw_packet_queue.cpp
- * @version 0.2.8
+ * @version 0.2.9
  * @authors Anton Chernov
  * @date    2026-09-04
  * @date    @showdate "%Y-%m-%d"
