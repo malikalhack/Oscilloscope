@@ -5,82 +5,6 @@ Records key decisions, structural changes, and completed development stages.
 
 ---
 
-## 2026-09-05
-
-### Stage 4 preparation - Release metadata coverage
-
-- Registered standalone C++ test sources in dedicated CMake source lists.
-- Extended the release updater to discover C++ test sources and update their
-  `@version` metadata together with production sources.
-- Added deterministic CTest coverage that runs the updater in an isolated copy
-  of the project and verifies test-source version updates.
-- Corrected the documented DSO-2250 operational endpoint configuration to
-  interface 0, alternate setting 0.
-
-### Stage 4 - Sample parser foundation
-
-- Added pure DSO-2250 parser functions for capture-state responses and complete
-  interleaved two-channel waveform buffers.
-- Preserved the legacy byte layout: each sample pair is CH2 followed by CH1.
-- Preserved the legacy capture-state trigger-point transformation in the new,
-  Qt-independent parser.
-- Added deterministic CTest coverage for state parsing, trigger decoding,
-  channel order, and malformed capture buffers.
-
-### Stage 4 - Complete DSO-2250 capture reads
-
-- Start acquisition with the legacy capture-start and trigger-enable command
-  sequence before capture-state polling begins.
-- On a complete DSO-2250 capture-state response, read the fixed two-channel
-  32768-sample buffer as 128 consecutive 512-byte bulk packets.
-- Stop incomplete waveform publication at the first failed packet and preserve
-  the existing bounded recovery and device-loss behavior.
-- Restart capture and re-enable the trigger only after a complete buffer was
-  read and queued for processing.
-- Added acquisition-status diagnostics for channel-data, capture-start, and
-  trigger-enable failures.
-
-### Stage 4 - Decoded waveform publication
-
-- Preserved the decoded capture trigger point alongside its raw waveform bytes
-  while the frame passes through the FIFO.
-- Decode complete queued DSO-2250 frames in the processing worker instead of
-  interpreting raw channel bytes as capture-state data.
-- Added a mutex-protected latest-waveform snapshot and `getLatestWaveform()`
-  API for the future renderer.
-- Extended FIFO tests to verify trigger-point metadata is retained with each
-  packet.
-
-### Capture protocol profiles
-
-- Moved capture endpoints, command bytes, packet length, channel layout,
-  sample count, and completion state into each supported-device entry.
-- Preserve the selected profile in the active USB connection and use it for
-  acquisition and waveform parsing instead of model-named function contracts.
-- Validate profile packetisation and fixed capture-storage bounds before
-  requesting sample data.
-
-### Stage 4 - Hardware verification
-
-- Verified a 60-second acquisition on the initial Hantek DSO-2250 profile.
-- Verified six 10-second Start/Stop cycles: the UI stayed responsive and the
-  connected device was ready for every subsequent Start.
-- Verified active USB removal: acquisition stopped without a crash, deadlock,
-  or unbounded wait and reported the lost device while beginning a command.
-- Verified automatic rediscovery, explicit reconnection, and a subsequent
-  successful acquisition after the device was reattached.
-- Verified application shutdown during acquisition without a crash, deadlock,
-  or unbounded wait; the instrument returned to its connected idle LED state,
-  then turned off after application exit.
-- Verified the Release build without warnings. Normal acquisition showed no
-  persistent recovery state or unexpected acquisition stop.
-
-### Code style - Immutable object naming
-
-- Reserved `UPPER_CASE` for preprocessor macros.
-- Renamed immutable module objects to the `kPascalCase` convention while
-  retaining `const` storage and unchanged runtime behavior.
-
 ## 2026-08-27
 
 ### Project inception
@@ -322,3 +246,122 @@ Records key decisions, structural changes, and completed development stages.
 - Decode capture-state responses and acquired sample packets.
 - Add deterministic fault-injection tests for timeout and transfer-error
   recovery, then verify recovery with a connected physical device.
+
+## 2026-09-05
+
+### Stage 4 - Data ring buffer
+
+- Added `WaveformRingBuffer`, a bounded thread-safe buffer of decoded
+  two-channel waveform frames connecting the capture processing thread to
+  render consumption.
+- The producer side never blocks: pushing a frame while full discards the
+  oldest buffered frame and increments a thread-safe dropped-frame count.
+- The consumer side is non-blocking as well: `popLatest()` drains any
+  backlog and returns only the freshest frame, matching a real-time render
+  loop that must never wait on stale or absent data.
+- Replaced the single-slot mutex-protected waveform snapshot in
+  `SAcquisitionLoop` with a `WaveformRingBuffer` member; `getLatestWaveform()`
+  keeps its existing signature and now delegates to `popLatest()`.
+- Wired the render loop to call `getLatestWaveform()` once per frame and
+  surface the decoded sample count and trigger point on the status line,
+  proving the capture-to-render path end to end; plotting the waveform shape
+  remains a separate future task.
+- Added deterministic CTest coverage for latest-frame semantics, overflow
+  drop-oldest with its counter, reset/reopen, an empty buffer, and concurrent
+  producer/consumer operation.
+- Verified warning-free Debug and Release builds and a full CTest pass.
+
+### Stage 4 preparation - Release metadata coverage
+
+- Registered standalone C++ test sources in dedicated CMake source lists.
+- Extended the release updater to discover C++ test sources and update their
+  `@version` metadata together with production sources.
+- Added deterministic CTest coverage that runs the updater in an isolated copy
+  of the project and verifies test-source version updates.
+- Corrected the documented DSO-2250 operational endpoint configuration to
+  interface 0, alternate setting 0.
+
+### Stage 4 - Sample parser foundation
+
+- Added pure DSO-2250 parser functions for capture-state responses and complete
+  interleaved two-channel waveform buffers.
+- Preserved the legacy byte layout: each sample pair is CH2 followed by CH1.
+- Preserved the legacy capture-state trigger-point transformation in the new,
+  Qt-independent parser.
+- Added deterministic CTest coverage for state parsing, trigger decoding,
+  channel order, and malformed capture buffers.
+
+### Stage 4 - Complete DSO-2250 capture reads
+
+- Start acquisition with the legacy capture-start and trigger-enable command
+  sequence before capture-state polling begins.
+- On a complete DSO-2250 capture-state response, read the fixed two-channel
+  32768-sample buffer as 128 consecutive 512-byte bulk packets.
+- Stop incomplete waveform publication at the first failed packet and preserve
+  the existing bounded recovery and device-loss behavior.
+- Restart capture and re-enable the trigger only after a complete buffer was
+  read and queued for processing.
+- Added acquisition-status diagnostics for channel-data, capture-start, and
+  trigger-enable failures.
+
+### Stage 4 - Decoded waveform publication
+
+- Preserved the decoded capture trigger point alongside its raw waveform bytes
+  while the frame passes through the FIFO.
+- Decode complete queued DSO-2250 frames in the processing worker instead of
+  interpreting raw channel bytes as capture-state data.
+- Added a mutex-protected latest-waveform snapshot and `getLatestWaveform()`
+  API for the future renderer.
+- Extended FIFO tests to verify trigger-point metadata is retained with each
+  packet.
+
+### Capture protocol profiles
+
+- Moved capture endpoints, command bytes, packet length, channel layout,
+  sample count, and completion state into each supported-device entry.
+- Preserve the selected profile in the active USB connection and use it for
+  acquisition and waveform parsing instead of model-named function contracts.
+- Validate profile packetisation and fixed capture-storage bounds before
+  requesting sample data.
+
+### Stage 4 - Hardware verification
+
+- Verified a 60-second acquisition on the initial Hantek DSO-2250 profile.
+- Verified six 10-second Start/Stop cycles: the UI stayed responsive and the
+  connected device was ready for every subsequent Start.
+- Verified active USB removal: acquisition stopped without a crash, deadlock,
+  or unbounded wait and reported the lost device while beginning a command.
+- Verified automatic rediscovery, explicit reconnection, and a subsequent
+  successful acquisition after the device was reattached.
+- Verified application shutdown during acquisition without a crash, deadlock,
+  or unbounded wait; the instrument returned to its connected idle LED state,
+  then turned off after application exit.
+- Verified the Release build without warnings. Normal acquisition showed no
+  persistent recovery state or unexpected acquisition stop.
+
+### Code style - Immutable object naming
+
+- Reserved `UPPER_CASE` for preprocessor macros.
+- Renamed immutable module objects to the `kPascalCase` convention while
+  retaining `const` storage and unchanged runtime behavior.
+
+## 2026-09-06
+
+### Stage 4 - Data ring buffer hardware verification
+
+- Verified the Release build succeeded without warnings.
+- Verified the Connect/Start/Stop status-line and status-LED lifecycle on a
+  physical Hantek DSO-2250: `Stopped | Live mode | Connected` with a red LED
+  after Connect, `Acquiring` with a green LED after Start, and back to
+  `Stopped` with a red LED after Stop, with the connection retained.
+- Verified a 60-second acquisition run and six repeated 10-second Start/Stop
+  cycles: the GUI stayed responsive and the connection remained usable for a
+  new Start after every Stop.
+- Verified active USB removal during acquisition: the application did not
+  hang, acquisition stopped, and the status line reported
+  `Device disconnected: USB device lost while beginning command`.
+- Verified automatic rediscovery after reattaching the device, followed by a
+  successful Connect and Start with the same status/LED lifecycle as above.
+- Verified application shutdown during acquisition: no hang or crash; the
+  status LED blinked red briefly, then turned off.
+
