@@ -1,6 +1,6 @@
 /**
  * @file    main.cpp
- * @version 0.2.7
+ * @version 0.2.8
  * @authors Anton Chernov
  * @date    2026-08-28
  * @date    @showdate "%Y-%m-%d"
@@ -38,7 +38,7 @@
  * @def VERSION_PATCH
  * @brief Patch version number of Oscilloscope (backwards-compatible bug fixes).
  */
-#define VERSION_PATCH     7
+#define VERSION_PATCH     8
 
 /**
  * @def VERSION_STR_
@@ -107,9 +107,9 @@ static const SUsbDeviceInfo kEmptyDeviceInfo = { NULL, 0U, 0U, 0U, 0U };
 #ifdef __GNUC__  // GCC/MinGW only
 const char kVersionInfo[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
-    "FileVersion: 0.2.7.0\n"
+    "FileVersion: 0.2.8.0\n"
     "ProductName: Oscilloscope\n"
-    "ProductVersion: 0.2.7.0\n"
+    "ProductVersion: 0.2.8.0\n"
     "CompanyName: N/A\n"
     "LegalCopyright: Copyright (C) Anton Chernov, 2026\n"
     "OriginalFilename: run\n";

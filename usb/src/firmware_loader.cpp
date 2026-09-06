@@ -1,6 +1,6 @@
 /**
  * @file    firmware_loader.cpp
- * @version 0.2.7
+ * @version 0.2.8
  * @authors Anton Chernov
  * @date    2026-09-02
  * @date    @showdate "%Y-%m-%d"
