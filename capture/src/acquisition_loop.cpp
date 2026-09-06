@@ -48,6 +48,58 @@ static const unsigned int kTransferTimeoutMs = 250U;
 static const unsigned int kTransferAttempts = 1U;
 static const unsigned int kMaxConsecutiveFailures = 3U;
 
+/** @brief Raw capture-state value meaning "buffer empty" for every model */
+static const uint8_t kCaptureEmptyState = 0U;
+
+/**
+ * @brief Consecutive empty polls tolerated before re-arming the trigger
+ * @details A single force-trigger pulse can arrive before the capture
+ * engine has re-armed, so the capture is retried periodically while the
+ * buffer stays empty. TEMPORARY fixed threshold; Stage 5 will replace this
+ * with real trigger-mode handling driven by the UI.
+ */
+static const unsigned int kForceRestartThreshold = 3U;
+
+/**
+ * @brief Fixed capture configuration sent once before the first capture
+ * @details TEMPORARY until Stage 5 (see WorkingDocs/TECHNICAL_SPECIFICATION.md)
+ * wires the Timebase/Scale/Trigger UI controls to the device: a single
+ * known-safe configuration unblocks acquisition meanwhile: both channels
+ * enabled at 5V/division AC coupling (capacitor-coupled inputs, safer
+ * unattended default), 1ms/division, rising-edge auto-trigger on CH1.
+ */
+static const uint8_t kDefaultVoltageRangeCode = 0U;    /**< VOLTAGE_5V */
+static const uint8_t kDefaultCouplingDc = 0U;          /**< COUPLING_AC */
+static const uint8_t kDefaultSelectedChannel = 2U;     /**< SELECT_CH1CH2 */
+static const uint8_t kDefaultTriggerSource = 1U;       /**< TRIGGER_CH1 */
+static const uint8_t kDefaultTriggerSlope = 0U;        /**< SLOPE_POSITIVE */
+static const uint8_t kDefaultSampleSizeCode = 2U;      /**< BUFFER_LARGE */
+static const uint16_t kDefaultTimeBaseValue = 0xFFF7U; /**< TIME_1ms preset */
+/** 1ms/div is past the fast range */
+static const uint8_t kDefaultTimeBaseFastCode = 4U;
+/** No-offset trigger position */
+static const uint32_t kDefaultTriggerPosition = 0x77660U;
+
+/**
+ * @brief Channel/trigger offset DAC configuration sent once before the
+ * first capture
+ * @details TEMPORARY until Stage 5 wires the vertical-position/trigger-
+ * level UI controls: the offset DACs are seeded from the per-unit
+ * calibration table (read once at connect) at their centered value, since
+ * this application does not yet let the user move the trace or trigger
+ * level away from the middle of the screen. Without any offset write the
+ * device never leaves its power-on capture state.
+ */
+static const uint16_t kControlValueChannelLevel = 0x0008U;
+/** 2 channels x 9 ranges x 2 (start,end) 16-bit entries */
+static const uint16_t kChannelLevelTableBytes = 72U;
+/** Index of the 5V range entry (ranges are stored from 10mV to 5V) */
+static const size_t kChannelLevelRangeIndex = 8U;
+/** Constant high-byte marker seen on every offset DAC write */
+static const uint8_t kOffsetDacMarkerByte = 0x20U;
+/** Centered trigger-level DAC value */
+static const uint8_t kDefaultTriggerOffsetByte = 0x7FU;
+
 /***************************** Private prototypes *****************************/
 
 /**
@@ -90,6 +142,32 @@ static usb::SUsbTransferResult readCaptureData(
     const usb::SUsbConnection &connection,
     uint8_t *data,
     EAcquisitionOperation *failedOperation
+);
+
+/**
+ * @brief Sends the fixed pre-capture configuration (filters, voltage
+ * range/coupling relays, trigger source/slope, and sample rate)
+ * @param[in] connection USB connection to configure
+ * @param[out] failedOperation First operation that failed
+ * @returns Result of the first failed operation or the final successful write
+ * @note TEMPORARY: sends one hardcoded configuration; Stage 5 replaces this
+ * with values derived from the Timebase/Scale/Trigger UI controls.
+ */
+static usb::SUsbTransferResult configureCapture(
+    const usb::SUsbConnection &connection,
+    EAcquisitionOperation *failedOperation
+);
+
+/**
+ * @brief Computes the centered offset DAC byte for one channel
+ * @param[in] channelLevels Calibration table read via the channel-level
+ * control request (2 channels x 9 ranges x {start,end} 16-bit entries)
+ * @param[in] channelIndex Channel index (0 = CH1, 1 = CH2)
+ * @returns High byte of the calibration range midpoint for the 5V range
+ */
+static uint8_t channelLevelCenterByte(
+    const uint8_t *channelLevels,
+    uint8_t channelIndex
 );
 
 /**
@@ -241,10 +319,18 @@ static void pollCaptureState(
         connection.captureProtocol.channelCount;
     unsigned int consecutiveFailures = 0U;
     unsigned int delayMs = kPollIntervalMs;
+    bool captureConfigured = false;
     bool captureStartRequired = true;
+    unsigned int emptyCaptureCount = 0U;
 
     while (!loop->stopRequested.load()) {
-        if (captureStartRequired) {
+        if (!captureConfigured) {
+            transferResult = configureCapture(connection, &failedOperation);
+            if (transferResult.status == usb::EUsbTransferStatus::eSuccess) {
+                captureConfigured = true;
+            }
+        }
+        else if (captureStartRequired) {
             transferResult = restartCapture(connection, &failedOperation);
             if (transferResult.status == usb::EUsbTransferStatus::eSuccess) {
                 captureStartRequired = false;
@@ -270,6 +356,7 @@ static void pollCaptureState(
                     captureState.captureState ==
                     connection.captureProtocol.captureCompleteState
                 ) {
+                    emptyCaptureCount = 0U;
                     transferResult = readCaptureData(
                         connection,
                         captureData.data(),
@@ -289,6 +376,19 @@ static void pollCaptureState(
                             &failedOperation
                         );
                     }
+                }
+                else if (captureState.captureState == kCaptureEmptyState) {
+                    ++emptyCaptureCount;
+                    if (emptyCaptureCount >= kForceRestartThreshold) {
+                        emptyCaptureCount = 0U;
+                        transferResult = restartCapture(
+                            connection,
+                            &failedOperation
+                        );
+                    }
+                }
+                else {
+                    emptyCaptureCount = 0U;
                 }
             }
         }
@@ -362,6 +462,9 @@ static usb::SUsbTransferResult executePollingTransaction(
     EAcquisitionOperation *failedOperation
 ) {
     uint8_t speedBuffer[kSpeedResponseLen];
+    uint8_t triggerEnabledCommand[2] = {
+        connection.captureProtocol.triggerEnabledCmd, 0U
+    };
     uint8_t captureStateCommand[2] = {
         connection.captureProtocol.captureStateCommand, 0U
     };
@@ -369,13 +472,26 @@ static usb::SUsbTransferResult executePollingTransaction(
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
 
+    /* The device only reports a completed capture while its trigger stays
+       armed; re-asserting this on every poll (not only after a restart)
+       matches the real capture-state poll cadence observed on the wire. */
     result = executeCommand(
         connection,
-        captureStateCommand,
-        sizeof(captureStateCommand),
-        EAcquisitionOperation::eCaptureStateCommand,
+        triggerEnabledCommand,
+        sizeof(triggerEnabledCommand),
+        EAcquisitionOperation::eTriggerEnabledCmd,
         failedOperation
     );
+
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        result = executeCommand(
+            connection,
+            captureStateCommand,
+            sizeof(captureStateCommand),
+            EAcquisitionOperation::eCaptureStateCmd,
+            failedOperation
+        );
+    }
 
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eSpeedBeforeResponse;
@@ -437,7 +553,7 @@ static usb::SUsbTransferResult readCaptureData(
             connection,
             channelDataCommand,
             sizeof(channelDataCommand),
-            EAcquisitionOperation::eChannelDataCommand,
+            EAcquisitionOperation::eChannelDataCmd,
             failedOperation
         );
     }
@@ -468,6 +584,180 @@ static usb::SUsbTransferResult readCaptureData(
 
     return result;
 }
+/*----------------------------------------------------------------------------*/
+
+/** @fn channelLevelCenterByte */
+static uint8_t channelLevelCenterByte(
+    const uint8_t *channelLevels,
+    uint8_t channelIndex
+) {
+    const size_t base = (
+        ((static_cast<size_t>(channelIndex) * 9U) + kChannelLevelRangeIndex) *
+        2U * 2U
+    );
+    const uint16_t offsetStart = static_cast<uint16_t>(
+        channelLevels[base] |
+        (static_cast<uint16_t>(channelLevels[base + 1U]) << 8U)
+    );
+    const uint16_t offsetEnd = static_cast<uint16_t>(
+        channelLevels[base + 2U] |
+        (static_cast<uint16_t>(channelLevels[base + 3U]) << 8U)
+    );
+    const uint32_t center = (
+        static_cast<uint32_t>(offsetStart) + static_cast<uint32_t>(offsetEnd)
+    ) / 2U;
+
+    return static_cast<uint8_t>(center >> 8U);
+}
+
+/*----------------------------------------------------------------------------*/
+
+/** @fn configureCapture */
+static usb::SUsbTransferResult configureCapture(
+    const usb::SUsbConnection &connection,
+    EAcquisitionOperation *failedOperation
+) {
+    const uint8_t filterCommand[8] = {
+        connection.captureProtocol.setFilterCmd, 0x0FU,
+        0U, 0U, 0U, 0U, 0U, 0U
+    };
+    const uint8_t tsrByte1 = static_cast<uint8_t>(
+        kDefaultTriggerSource |
+        (kDefaultSampleSizeCode << 2U) |
+        (kDefaultTimeBaseFastCode << 5U)
+    );
+    const uint8_t tsrByte2 = static_cast<uint8_t>(
+        kDefaultSelectedChannel | (kDefaultTriggerSlope << 3U)
+    );
+    const uint8_t triggerNSampleRateCmd[12] = {
+        connection.captureProtocol.setTriggerNSampleRateCmd, 0U,
+        tsrByte1, tsrByte2,
+        static_cast<uint8_t>(kDefaultTimeBaseValue),
+        static_cast<uint8_t>(kDefaultTimeBaseValue >> 8U),
+        static_cast<uint8_t>(kDefaultTriggerPosition),
+        static_cast<uint8_t>(kDefaultTriggerPosition >> 8U),
+        0U, 0U,
+        static_cast<uint8_t>(kDefaultTriggerPosition >> 16U),
+        0U
+    };
+    const uint8_t voltageByte = static_cast<uint8_t>(
+        (2U - (kDefaultVoltageRangeCode % 3U)) |
+        ((2U - (kDefaultVoltageRangeCode % 3U)) << 2U) |
+        (3U << 4U)
+    );
+    const uint8_t voltageCommand[8] = {
+        connection.captureProtocol.setVoltageNCouplingCmd, 0x0FU,
+        voltageByte, 0U, 0U, 0U, 0U, 0U
+    };
+    /* Relay bitmap: index 3 and 6 flip to DC coupling for CH1/CH2 (base
+       state is AC); the 5V range needs no attenuator relay change and CH1
+       as trigger source needs no EXT relay change. */
+    uint8_t relays[17] = {
+        0x00U, 0x04U, 0x08U, 0x02U, 0x20U, 0x40U, 0x10U, 0x01U,
+        0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U
+    };
+    uint8_t channelLevels[kChannelLevelTableBytes];
+    /* Offset DAC write: bytes 0/2/4 are a constant marker; 1 and 3 hold
+       the CH1/CH2 vertical-position DAC value (centered, seeded from the
+       calibration table read below); 5 holds the trigger-level DAC value
+       (centered, no calibration involved). */
+    uint8_t offset[17] = {
+        kOffsetDacMarkerByte, 0U,
+        kOffsetDacMarkerByte, 0U,
+        kOffsetDacMarkerByte, kDefaultTriggerOffsetByte,
+        0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U
+    };
+    usb::SUsbTransferResult result = {
+        usb::EUsbTransferStatus::eSuccess, 0, ""
+    };
+
+    if (kDefaultCouplingDc != 0U) {
+        relays[3] = static_cast<uint8_t>(~relays[3]);
+        relays[6] = static_cast<uint8_t>(~relays[6]);
+    }
+
+    result = executeCommand(
+        connection,
+        filterCommand,
+        sizeof(filterCommand),
+        EAcquisitionOperation::eSetFilterCmd,
+        failedOperation
+    );
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        result = executeCommand(
+            connection,
+            triggerNSampleRateCmd,
+            sizeof(triggerNSampleRateCmd),
+            EAcquisitionOperation::eSetTriggerNSampleRateCmd,
+            failedOperation
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        result = executeCommand(
+            connection,
+            voltageCommand,
+            sizeof(voltageCommand),
+            EAcquisitionOperation::eSetVoltageNCouplingCmd,
+            failedOperation
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eSetRelaysCmd;
+        result = usb::controlWrite(
+            connection,
+            connection.captureProtocol.setRelaysControlRequest,
+            relays,
+            sizeof(relays),
+            0U,
+            0U,
+            kTransferTimeoutMs,
+            kTransferAttempts
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eGetChannelLevelCmd;
+        result = usb::controlRead(
+            connection,
+            connection.captureProtocol.controlCommandRequest,
+            channelLevels,
+            kChannelLevelTableBytes,
+            kControlValueChannelLevel,
+            0U,
+            kTransferTimeoutMs,
+            kTransferAttempts,
+            kChannelLevelTableBytes
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        offset[1] = channelLevelCenterByte(channelLevels, 0U);
+        offset[3] = channelLevelCenterByte(channelLevels, 1U);
+        *failedOperation = EAcquisitionOperation::eSetOffsetCmd;
+        result = usb::controlWrite(
+            connection,
+            connection.captureProtocol.setOffsetControlRequest,
+            offset,
+            sizeof(offset),
+            0U,
+            0U,
+            kTransferTimeoutMs,
+            kTransferAttempts
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        result = executeCommand(
+            connection,
+            triggerNSampleRateCmd,
+            sizeof(triggerNSampleRateCmd),
+            EAcquisitionOperation::eSetTriggerNSampleRateCmd,
+            failedOperation
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eNone;
+    }
+
+    return result;
+}
 
 /*----------------------------------------------------------------------------*/
 
@@ -476,11 +766,14 @@ static usb::SUsbTransferResult restartCapture(
     const usb::SUsbConnection &connection,
     EAcquisitionOperation *failedOperation
 ) {
-    const uint8_t captureStartCommand[2] = {
-        connection.captureProtocol.captureStartCommand, 0U
+    const uint8_t captureStartCmd[2] = {
+        connection.captureProtocol.captureStartCmd, 0U
     };
-    const uint8_t triggerEnabledCommand[2] = {
-        connection.captureProtocol.triggerEnabledCommand, 0U
+    const uint8_t triggerEnabledCmd[2] = {
+        connection.captureProtocol.triggerEnabledCmd, 0U
+    };
+    const uint8_t forceTriggerCmd[2] = {
+        connection.captureProtocol.forceTriggerCmd, 0U
     };
     usb::SUsbTransferResult result = {
         usb::EUsbTransferStatus::eSuccess, 0, ""
@@ -488,17 +781,32 @@ static usb::SUsbTransferResult restartCapture(
 
     result = executeCommand(
         connection,
-        captureStartCommand,
-        sizeof(captureStartCommand),
-        EAcquisitionOperation::eCaptureStartCommand,
+        captureStartCmd,
+        sizeof(captureStartCmd),
+        EAcquisitionOperation::eCaptureStartCmd,
         failedOperation
     );
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         result = executeCommand(
             connection,
-            triggerEnabledCommand,
-            sizeof(triggerEnabledCommand),
-            EAcquisitionOperation::eTriggerEnabledCommand,
+            triggerEnabledCmd,
+            sizeof(triggerEnabledCmd),
+            EAcquisitionOperation::eTriggerEnabledCmd,
+            failedOperation
+        );
+    }
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        /* Free-running auto-trigger: this application has no manual
+           trigger-source/level controls, so every capture is forced.
+           Without this, the device stays armed and waiting for a real
+           trigger edge that may never occur, and no capture ever
+           reaches captureCompleteState. TEMPORARY until Stage 5 adds
+           real trigger-mode selection. */
+        result = executeCommand(
+            connection,
+            forceTriggerCmd,
+            sizeof(forceTriggerCmd),
+            EAcquisitionOperation::eForceTriggerCmd,
             failedOperation
         );
     }
@@ -523,7 +831,7 @@ static usb::SUsbTransferResult executeCommand(
         usb::EUsbTransferStatus::eSuccess, 0, ""
     };
 
-    *failedOperation = EAcquisitionOperation::eBeginCommand;
+    *failedOperation = EAcquisitionOperation::eBeginCmd;
     result = usb::controlWrite(
         connection,
         kControlBeginCommand,
@@ -535,7 +843,7 @@ static usb::SUsbTransferResult executeCommand(
         kTransferAttempts
     );
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
-        *failedOperation = EAcquisitionOperation::eSpeedBeforeCommand;
+        *failedOperation = EAcquisitionOperation::eSpeedBeforeCmd;
         result = readConnectionSpeed(connection, speedBuffer);
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {

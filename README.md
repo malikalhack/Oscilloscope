@@ -22,9 +22,11 @@ hardware-independent parser functions. Each supported-device entry supplies its
 capture protocol, including endpoints, packet size, commands, channel layout,
 sample count, and completion state. After a completed capture, the acquisition
 worker reads and queues the complete profile-defined sample buffer, then starts
-the next capture. Live waveform rendering is not yet implemented. A processing
-worker decodes complete captures and publishes the latest frame and trigger
-point safely for rendering.
+the next capture. A processing worker decodes complete captures and publishes
+the latest frame and trigger point safely for rendering. Deterministic
+functions convert raw capture samples into volts and elapsed capture time from
+the selected voltage-scale and timebase settings. Live waveform rendering is
+not yet implemented.
 
 ## Planned Stack
 
@@ -43,7 +45,9 @@ Oscilloscope/
 ├── capture/        Sample acquisition and processing.
 │   ├── inc/        Capture module headers.
 │   └── src/        Capture module implementations.
-├── core/           Shared types and application logic.
+├── core/           Voltage/timebase scaling and shared application types.
+│   ├── inc/        Core module headers.
+│   └── src/        Core module implementations.
 ├── docs/           Project documentation.
 ├── firmware/       Default path for local device firmware files.
 ├── render/         Oscilloscope waveform rendering.
@@ -211,10 +215,20 @@ and restores the previous files if the build fails.
 CI can update only the version metadata by passing `--skip-build`.
 
 
+## Known Issues
+
+- Live capture on a physical Hantek DSO-2250 never reports a waveform:
+  `GetCaptureState` polling stays at the empty-buffer state, so no channel
+  data is read. Demo mode and the full CTest suite are unaffected. See
+  `HISTORY.md` ("Known issue - live capture on real DSO-2250 hardware
+  reports no waveform") for the investigation and ruled-out causes.
+
 ## Next Steps
 
-1. Render live and demo waveforms on the display grid.
-2. Implement the two-channel model, timebase, and instrument controls.
+1. Diagnose the live-capture-never-completes issue on real DSO-2250
+   hardware.
+2. Render live and demo waveforms on the display grid.
+3. Implement the two-channel model, timebase, and instrument controls.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.

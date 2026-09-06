@@ -365,3 +365,65 @@ Records key decisions, structural changes, and completed development stages.
 - Verified application shutdown during acquisition: no hang or crash; the
   status LED blinked red briefly, then turned off.
 
+### Stage 4 - Scaling logic
+
+- Added a new `core` module with deterministic, hardware-independent
+  functions that convert raw two-channel capture samples into volts and
+  elapsed capture time.
+- Centered voltage scaling on the ADC midpoint (raw sample 128) with 32 raw
+  counts per vertical grid division, matching the legacy `glbox`/
+  `hantekdsoathread` display convention (8 vertical divisions across the
+  256-value 8-bit sample range).
+- Modeled elapsed sample time as a fraction of the full capture spanning the
+  10 horizontal grid divisions at the selected timebase.
+- Added shared voltage-scale and timebase lookup tables as the single source
+  of truth for both the scaling math and the existing UI combo-box labels,
+  with compile-time checks that the tables and labels stay in sync.
+- Wired the status line to show the scaled CH1/CH2 voltage and elapsed time
+  at the decoded trigger sample, proving the scaling pipeline end to end
+  without yet plotting the waveform shape, which remains a separate future
+  task.
+- Added deterministic CTest coverage for characteristic and boundary raw
+  sample values and sample-time fractions, including a zero-sample-count
+  guard.
+- Verified warning-free Debug and Release builds and a full CTest pass.
+
+### Stage 4 - Per-instrument scaling profile
+
+- Introduced `EInstrumentModel` and `SInstrumentScalingProfile` so timebase
+  steps, voltage-scale steps, grid divisions, and the ADC zero-volt center
+  value are looked up per connected instrument instead of one fixed table.
+- Replaced the single shared voltage/timebase lookup tables and their
+  compile-time label checks with `findInstrtScalingProfile()`, resolved once
+  per frame from the connected or last-scanned device identity, falling back
+  to the DSO-2250 profile so the UI always has scale steps to display.
+- Added deterministic CTest coverage for profile lookup, including the
+  fallback and an unknown-model case.
+
+### Known issue - live capture on real DSO-2250 hardware reports no waveform
+
+- Symptom: `GetCaptureState` polling never leaves the empty-buffer state on a
+  physical Hantek DSO-2250 (state byte stays `0x00`), so no channel data is
+  ever read and the display keeps showing no waveform, while Demo mode and
+  every deterministic CTest continue to pass.
+- Investigated and ruled out across several verified, warning-free
+  Debug/Release builds, each checked against fresh USB captures from the
+  physical device: a missing `ForceTrigger` before polling, an incomplete
+  `configureCapture()` command sequence, missing empty-response retry
+  handling, resending `TriggerEnabled` on every poll, and a missing
+  `SetOffset` (`CONTROL_SETOFFSET`, request `0xB4`) channel/trigger offset
+  command derived from the device's calibration table - all implemented,
+  hardware-tested, and individually confirmed insufficient.
+- Found by correlating each USB command byte with its immediately following
+  response byte across a full Windows reference driver capture (naive
+  per-endpoint response counts are misleading, because `GetCaptureState`,
+  `GetChannelData`, and the unrelated logic-channel/auto-range subsystem all
+  share bulk-IN endpoint `0x86`): the reference driver's completed-capture
+  state value is `3`, not the previously assumed `2`. Corrected
+  `captureCompleteState` from `2U` to `3U` for both DSO-2250 profiles in
+  `usb/src/usb_device.cpp`.
+- This correction is warning-free in Debug/Release and passes all CTest
+  cases, but still did NOT resolve the symptom on hardware retest - the
+  root cause remains open. Treated as a known, unresolved bug pending
+  further hardware-side USB capture analysis.
+
