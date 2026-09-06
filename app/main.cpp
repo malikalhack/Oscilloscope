@@ -84,11 +84,16 @@
 
 #include "acquisition_loop.h"
 #include "usb_device.h"
+#include "waveform_scaling.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
 using oscilloscope::capture::SWaveformSamples;
 using oscilloscope::capture::EAcquisitionOperation;
 using oscilloscope::capture::EAcquisitionState;
+using oscilloscope::core::kTimebaseSecondsPerDivision;
+using oscilloscope::core::kVoltageScaleVoltsPerDivision;
+using oscilloscope::core::sampleIndexToSeconds;
+using oscilloscope::core::sampleToVolts;
 using oscilloscope::usb::EScanStatus;
 using oscilloscope::usb::EUsbTransferStatus;
 using oscilloscope::usb::SUsbConnection;
@@ -335,6 +340,19 @@ int main (void) {
         "500 mV/div", "1 V/div", "2 V/div", "5 V/div"
     };
 
+    static_assert(
+        IM_ARRAYSIZE(timebases) ==
+            sizeof(kTimebaseSecondsPerDivision) /
+                sizeof(kTimebaseSecondsPerDivision[0]),
+        "Timebase labels must match the scaling table"
+    );
+    static_assert(
+        IM_ARRAYSIZE(voltageScales) ==
+            sizeof(kVoltageScaleVoltsPerDivision) /
+                sizeof(kVoltageScaleVoltsPerDivision[0]),
+        "Voltage scale labels must match the scaling table"
+    );
+
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event) != 0) {
@@ -562,15 +580,39 @@ int main (void) {
         }
         ImGui::EndChild();
 
-        char waveformStatus[64];
+        char waveformStatus[128];
 
-        if (hasWaveform) {
+        if (hasWaveform && latestWaveform.sampleCount != 0U) {
+            size_t triggerSampleIndex =
+                static_cast<size_t>(latestTriggerPoint);
+
+            if (triggerSampleIndex >= latestWaveform.sampleCount) {
+                triggerSampleIndex = 0U;
+            }
+
+            const double channelOneVolts = sampleToVolts(
+                latestWaveform.channelOne[triggerSampleIndex],
+                kVoltageScaleVoltsPerDivision[voltsPerDivision[0]]
+            );
+            const double channelTwoVolts = sampleToVolts(
+                latestWaveform.channelTwo[triggerSampleIndex],
+                kVoltageScaleVoltsPerDivision[voltsPerDivision[1]]
+            );
+            const double triggerSeconds = sampleIndexToSeconds(
+                triggerSampleIndex,
+                latestWaveform.sampleCount,
+                kTimebaseSecondsPerDivision[timebase]
+            );
+
             snprintf(
                 waveformStatus,
                 sizeof(waveformStatus),
-                "Waveform %zu samples (trigger %u)",
+                "Waveform %zu samples (trigger %u) CH1 %.3fV CH2 %.3fV @ %.3gs",
                 latestWaveform.sampleCount,
-                static_cast<unsigned int>(latestTriggerPoint)
+                static_cast<unsigned int>(latestTriggerPoint),
+                channelOneVolts,
+                channelTwoVolts,
+                triggerSeconds
             );
         }
         else {
