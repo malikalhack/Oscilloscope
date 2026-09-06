@@ -22,9 +22,11 @@ hardware-independent parser functions. Each supported-device entry supplies its
 capture protocol, including endpoints, packet size, commands, channel layout,
 sample count, and completion state. After a completed capture, the acquisition
 worker reads and queues the complete profile-defined sample buffer, then starts
-the next capture. Live waveform rendering is not yet implemented. A processing
-worker decodes complete captures and publishes the latest frame and trigger
-point safely for rendering.
+the next capture. A processing worker decodes complete captures and publishes
+the latest frame and trigger point safely for rendering. Deterministic
+functions convert raw capture samples into volts and elapsed capture time from
+the selected voltage-scale and timebase settings. Live waveform rendering is
+not yet implemented.
 
 ## Planned Stack
 
@@ -43,7 +45,9 @@ Oscilloscope/
 ├── capture/        Sample acquisition and processing.
 │   ├── inc/        Capture module headers.
 │   └── src/        Capture module implementations.
-├── core/           Shared types and application logic.
+├── core/           Voltage/timebase scaling and shared application types.
+│   ├── inc/        Core module headers.
+│   └── src/        Core module implementations.
 ├── docs/           Project documentation.
 ├── firmware/       Default path for local device firmware files.
 ├── render/         Oscilloscope waveform rendering.

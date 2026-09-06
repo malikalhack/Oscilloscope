@@ -31,6 +31,7 @@ libusb for communication with supported instruments.
 - complete profile-defined capture reads after a successful trigger.
 - thread-safe publication of the latest decoded waveform and trigger point.
 - a per-device capture profile selected from the supported-device table.
+- deterministic voltage and timebase scaling of raw capture samples.
 
 ## Architecture
 
@@ -38,7 +39,7 @@ libusb for communication with supported instruments.
 | --- | --- |
 | `app/` | Application entry point, event loop, and UI composition |
 | `capture/` | Sample acquisition and buffering |
-| `core/` | Planned shared application types and state |
+| `core/` | Voltage/timebase scaling and shared application types |
 | `docs/` | Generated documentation sources |
 | `firmware/` | Default path for local device firmware files |
 | `render/` | Planned waveform rendering |

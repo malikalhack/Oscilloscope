@@ -365,3 +365,26 @@ Records key decisions, structural changes, and completed development stages.
 - Verified application shutdown during acquisition: no hang or crash; the
   status LED blinked red briefly, then turned off.
 
+### Stage 4 - Scaling logic
+
+- Added a new `core` module with deterministic, hardware-independent
+  functions that convert raw two-channel capture samples into volts and
+  elapsed capture time.
+- Centered voltage scaling on the ADC midpoint (raw sample 128) with 32 raw
+  counts per vertical grid division, matching the legacy `glbox`/
+  `hantekdsoathread` display convention (8 vertical divisions across the
+  256-value 8-bit sample range).
+- Modeled elapsed sample time as a fraction of the full capture spanning the
+  10 horizontal grid divisions at the selected timebase.
+- Added shared voltage-scale and timebase lookup tables as the single source
+  of truth for both the scaling math and the existing UI combo-box labels,
+  with compile-time checks that the tables and labels stay in sync.
+- Wired the status line to show the scaled CH1/CH2 voltage and elapsed time
+  at the decoded trigger sample, proving the scaling pipeline end to end
+  without yet plotting the waveform shape, which remains a separate future
+  task.
+- Added deterministic CTest coverage for characteristic and boundary raw
+  sample values and sample-time fractions, including a zero-sample-count
+  guard.
+- Verified warning-free Debug and Release builds and a full CTest pass.
+
