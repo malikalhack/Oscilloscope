@@ -553,4 +553,49 @@ Records key decisions, structural changes, and completed development stages.
   headroom is deferred to a later stage. The software zero reference already
   yields a correct 0 V reading.
 
+### Stage 4 - Added edge trigger detection
+
+- Added a new `oscilloscope::core` trigger module (`core/inc/waveform_trigger.h`,
+  `core/src/waveform_trigger.cpp`) with an `ETriggerSlope` enum and
+  `findEdgeTrigger`, which scans a sample buffer for the first rising or
+  falling crossing of a level starting at a given index.
+- Added `tests/waveform_trigger_test.cpp` covering rising and falling edges,
+  the no-crossing case, the start-index skip, and the null/short-buffer guards,
+  and registered the `waveform_trigger` test in `CMakeLists.txt`.
+- Wired the trigger into `app/main.cpp`: added a Trigger panel with a source
+  selector (CH1, CH2, ALT, EXT, EXT/10), a slope selector (Rising/Falling), a
+  level slider, and a mode selector (Auto, Normal, Single). Drew a horizontal
+  level line and a vertical trigger-position marker over the waveform, and used
+  the detected trigger sample as the readout reference. Software edge detection
+  runs on CH1/CH2 (ALT falls back to CH1; EXT and EXT/10 have no in-software
+  signal). Auto free-runs, Normal draws only when a trigger is found, and
+  Single freezes the first triggered frame until the Rearm button is pressed.
+- Modelled the trigger controls as `ETriggerMode`, `ETriggerSource`, and
+  `ETriggerSlope` enumerations with option tables that keep each value next to
+  its label (mirroring the scaling-profile step tables), so the combo labels
+  cannot drift from the enumerators.
+
+### Stage 4 - Held triggered frames and a trigger reference marker
+
+- Fixed Normal mode to hold the last triggered frame until the next trigger
+  instead of blanking the display when a frame contained no edge. Normal and
+  Single now share one held-frame path: Single captures once per arm, Normal
+  refreshes the held frame on every new trigger, and Auto free-runs live.
+- Added a "T" reference marker at the top of the display marking the sweep
+  trigger point, alongside the existing vertical trigger line.
+
+### Stage 4 - Aligned the trace to a movable trigger point
+
+- Reworked the trigger point so it is a fixed, user-movable horizontal
+  reference: added a Position control and shifted the displayed trace so the
+  triggering edge lands exactly under the "T" marker, with pre-trigger samples
+  to its left and post-trigger samples to its right.
+- Added a `horizontalOffset` parameter to `drawChannelWaveform` and drew the
+  vertical reference and "T" marker at the fixed trigger position instead of at
+  the raw sample index of the detected edge.
+- Armed the trigger only past a pre-trigger window sized by the Position
+  control, so the aligned trace keeps enough history to fill the display left
+  of the "T" marker instead of leaving an empty region.
+
+
 

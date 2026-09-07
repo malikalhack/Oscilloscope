@@ -48,6 +48,7 @@ set(SOURCES_LIST
     capture/src/waveform_parser.cpp
     capture/src/waveform_ring_buffer.cpp
     core/src/waveform_scaling.cpp
+    core/src/waveform_trigger.cpp
     core/src/instrument_scaling_profile.cpp
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -65,6 +66,7 @@ set(HEADERS_LIST
     capture/inc/waveform_parser.h
     capture/inc/waveform_ring_buffer.h
     core/inc/waveform_scaling.h
+    core/inc/waveform_trigger.h
     core/inc/instrument_model.h
     core/inc/instrument_scaling_profile.h
 )
@@ -83,6 +85,10 @@ set(WAVEFORM_RING_BUFFER_TEST_SOURCES_LIST
 
 set(WAVEFORM_SCALING_TEST_SOURCES_LIST
     tests/waveform_scaling_test.cpp
+)
+
+set(WAVEFORM_TRIGGER_TEST_SOURCES_LIST
+    tests/waveform_trigger_test.cpp
 )
 
 set(INSTRUMENT_SCALING_PROFILE_TEST_SOURCES_LIST
@@ -177,6 +183,16 @@ if(BUILD_TESTING)
     enable_project_warnings(waveform_scaling_tests)
     add_test(NAME waveform_scaling COMMAND waveform_scaling_tests)
     add_dependencies(${APP_NAME} waveform_scaling_tests)
+    add_executable(waveform_trigger_tests
+        ${WAVEFORM_TRIGGER_TEST_SOURCES_LIST}
+        core/src/waveform_trigger.cpp
+    )
+    target_include_directories(waveform_trigger_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/inc
+    )
+    enable_project_warnings(waveform_trigger_tests)
+    add_test(NAME waveform_trigger COMMAND waveform_trigger_tests)
+    add_dependencies(${APP_NAME} waveform_trigger_tests)
     add_executable(instrument_scaling_profile_tests
         ${INSTRUMENT_SCALING_PROFILE_TEST_SOURCES_LIST}
         core/src/instrument_scaling_profile.cpp
