@@ -1,6 +1,6 @@
 /**
  * @file    usb_device.cpp
- * @version 0.2.10
+ * @version 0.2.11
  * @authors Anton Chernov
  * @date    2026-09-01
  * @date    @showdate "%Y-%m-%d"

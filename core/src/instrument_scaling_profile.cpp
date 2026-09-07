@@ -1,6 +1,6 @@
 /**
  * @file    instrument_scaling_profile.cpp
- * @version 0.2.10
+ * @version 0.2.11
  * @authors Anton Chernov
  * @date    2026-09-06
  * @date    @showdate "%Y-%m-%d"
