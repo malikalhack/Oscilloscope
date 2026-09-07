@@ -1,6 +1,6 @@
 /**
  * @file    waveform_scaling.h
- * @version 0.2.9
+ * @version 0.2.10
  * @authors Anton Chernov
  * @date    2026-09-06
  * @date    @showdate "%Y-%m-%d"

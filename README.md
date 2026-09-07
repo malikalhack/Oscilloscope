@@ -6,7 +6,7 @@ Windows 10 and 11 is planned through the portable CMake-based architecture.
 
 ## Status
 
-Current version: `0.2.9`.
+Current version: `0.2.10`.
 
 The application currently provides:
 
