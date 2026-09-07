@@ -87,12 +87,15 @@
 #include "usb_device.h"
 #include "instrument_scaling_profile.h"
 #include "waveform_scaling.h"
+#include "waveform_trigger.h"
 
 using oscilloscope::capture::SAcquisitionLoop;
 using oscilloscope::capture::SWaveformSamples;
 using oscilloscope::capture::EAcquisitionOperation;
 using oscilloscope::capture::EAcquisitionState;
 using oscilloscope::core::EInstrumentModel;
+using oscilloscope::core::ETriggerSlope;
+using oscilloscope::core::findEdgeTrigger;
 using oscilloscope::core::findInstrtScalingProfile;
 using oscilloscope::core::sampleIndexToSeconds;
 using oscilloscope::core::sampleToVolts;
@@ -112,6 +115,71 @@ static const uint32_t kUsbPresenceIntervalMs = 1000U;
 /** @brief Cleared device identity used to reset connection bookkeeping */
 static const SUsbDeviceInfo kEmptyDeviceInfo =
     { NULL, EInstrumentModel::eUnknown, 0U, 0U, 0U, 0U };
+
+/** @brief Fraction of the captured record shown across the display, leaving
+ *         the rest as pre/post-trigger reserve to fill under the marker */
+static const float kDisplayWindowFraction = 0.8f;
+
+/** @brief Trigger acquisition modes offered in the control panel */
+enum class ETriggerMode {
+    eAuto = 0, /**< Free-running sweep, refreshes without a trigger */
+    eNormal,   /**< Refreshes only when the trigger condition is met */
+    eSingle    /**< Captures one triggered frame, then holds it */
+};
+
+/** @brief Trigger source selectable in the control panel */
+enum class ETriggerSource {
+    eChannelOne = 0,
+    eChannelTwo,
+    eAlternate,
+    eExternal,
+    eExternalTenth
+};
+
+/** @brief One trigger-mode option pairing its value with its label */
+struct STriggerModeOption {
+    ETriggerMode mode; /**< Enumerated mode value */
+    const char *label; /**< Display text */
+};
+
+/** @brief One trigger-slope option pairing its value with its label */
+struct STriggerSlopeOption {
+    ETriggerSlope slope; /**< Enumerated slope value */
+    const char *label;   /**< Display text */
+};
+
+/** @brief One trigger-source option: value, label, and signal channel */
+struct STriggerSourceOption {
+    ETriggerSource source; /**< Enumerated source value */
+    const char *label;     /**< Display text */
+    int signalChannel;     /**< 0=CH1, 1=CH2, -1 = no in-software signal */
+};
+
+static const STriggerModeOption kTriggerModeOptions[] = {
+    { ETriggerMode::eAuto,   "Auto"   },
+    { ETriggerMode::eNormal, "Normal" },
+    { ETriggerMode::eSingle, "Single" }
+};
+
+static const STriggerSlopeOption kTriggerSlopeOptions[] = {
+    { ETriggerSlope::eRising,  "Rising"  },
+    { ETriggerSlope::eFalling, "Falling" }
+};
+
+static const STriggerSourceOption kTriggerSourceOptions[] = {
+    { ETriggerSource::eChannelOne,    "CH1",     0 },
+    { ETriggerSource::eChannelTwo,    "CH2",     1 },
+    { ETriggerSource::eAlternate,     "ALT",     0 },
+    { ETriggerSource::eExternal,      "EXT",    -1 },
+    { ETriggerSource::eExternalTenth, "EXT/10", -1 }
+};
+
+static const size_t kTriggerModeOptionCount =
+    sizeof(kTriggerModeOptions) / sizeof(kTriggerModeOptions[0]);
+static const size_t kTriggerSlopeOptionCount =
+    sizeof(kTriggerSlopeOptions) / sizeof(kTriggerSlopeOptions[0]);
+static const size_t kTriggerSourceOptionCount =
+    sizeof(kTriggerSourceOptions) / sizeof(kTriggerSourceOptions[0]);
 
 #ifdef __GNUC__  // GCC/MinGW only
 const char kVersionInfo[] __attribute__((section(".version"), used)) =
@@ -148,7 +216,9 @@ static void drawOscilloscopeGrid(
  * @param[in] position Top-left corner of the plot area in screen space
  * @param[in] size Plot-area dimensions in pixels
  * @param[in] samples Raw ADC bytes to plot, one per horizontal step
- * @param[in] sampleCount Number of samples to read from @p samples
+ * @param[in] sampleCount Total samples available in @p samples
+ * @param[in] windowStart First record sample mapped to the left edge
+ * @param[in] windowLength Number of samples spread across the plot width
  * @param[in] profile Scaling profile giving the ADC-to-division mapping
  * @param[in] zeroReference Raw ADC level treated as zero volts for this channel
  * @param[in] color Polyline color
@@ -159,10 +229,20 @@ static void drawChannelWaveform(
     const ImVec2 &size,
     const uint8_t *samples,
     size_t sampleCount,
+    size_t windowStart,
+    size_t windowLength,
     const SInstrumentScalingProfile *profile,
     double zeroReference,
     ImU32 color
 );
+
+/**
+ * @brief Computes the on-screen window length in samples
+ * @param[in] sampleCount Total samples in the captured record
+ * @returns Window length shown across the display, leaving the remainder as
+ *          pre/post-trigger reserve so the trace fills under the marker
+ */
+static size_t computeDisplayWindow(size_t sampleCount);
 
 /**
  * @brief Checks whether a device is still present in a scan result
@@ -354,6 +434,13 @@ int main (void) {
     int voltsPerDivision[] = {7, 7};
     float channelZeroReference[] = {128.0f, 128.0f};
     float channelBaselineMean[] = {128.0f, 128.0f};
+    ETriggerSource triggerSource = ETriggerSource::eChannelOne;
+    ETriggerSlope triggerSlope = ETriggerSlope::eRising;
+    int triggerLevel = 128;
+    float triggerPosition = 0.5f;
+    ETriggerMode triggerMode = ETriggerMode::eAuto;
+    bool singleArmed = true;
+    bool heldValid = false;
     SUsbScanResult usbScanResult =
         oscilloscope::usb::enumerateSupportedDevices();
     bool demoMode =
@@ -369,7 +456,9 @@ int main (void) {
     uint32_t nextUsbPresenceCheck =
         SDL_GetTicks() + kUsbPresenceIntervalMs;
     SWaveformSamples latestWaveform{};
+    SWaveformSamples heldWaveform{};
     uint32_t latestTriggerPoint = 0U;
+    uint32_t heldTriggerIndex = 0U;
     bool hasWaveform = false;
 
     /* Timebase/voltage-scale labels and values come from the active
@@ -475,6 +564,82 @@ int main (void) {
 
         const SInstrumentScalingProfile *scalingProfile =
             resolveActiveScalingProfile(connectedDevice, usbScanResult);
+        const int triggerSignalChannel =
+            kTriggerSourceOptions[static_cast<size_t>(triggerSource)]
+                .signalChannel;
+        const bool triggerHasSignal = (triggerSignalChannel >= 0);
+        bool triggerFound = false;
+        size_t triggerIndex = 0U;
+        size_t triggerStartIndex = 0U;
+
+        if (hasWaveform && (latestWaveform.sampleCount != 0U) &&
+            triggerHasSignal) {
+            const uint8_t *triggerSamples =
+                (triggerSignalChannel == 1)
+                    ? latestWaveform.channelTwo.data()
+                    : latestWaveform.channelOne.data();
+            const size_t triggerWindowSamples =
+                computeDisplayWindow(latestWaveform.sampleCount);
+
+            /* Arm the trigger past the window's pre-trigger span so the
+             * aligned window keeps enough history to fill left of T. */
+            triggerStartIndex = static_cast<size_t>(
+                triggerPosition *
+                static_cast<float>(triggerWindowSamples - 1U)
+            );
+            triggerFound = findEdgeTrigger(
+                triggerSamples,
+                latestWaveform.sampleCount,
+                static_cast<uint8_t>(triggerLevel),
+                triggerSlope,
+                triggerStartIndex,
+                &triggerIndex
+            );
+        }
+
+        /* Normal and Single both hold the last triggered frame. Single
+         * captures once per arm; Normal refreshes on every new trigger. */
+        bool captureNow = false;
+        if (triggerMode == ETriggerMode::eNormal) {
+            captureNow = triggerFound;
+        }
+        else if (triggerMode == ETriggerMode::eSingle) {
+            captureNow = singleArmed && triggerFound;
+        }
+
+        if (captureNow && hasWaveform && (latestWaveform.sampleCount != 0U)) {
+            heldWaveform = latestWaveform;
+            heldTriggerIndex = static_cast<uint32_t>(triggerIndex);
+            heldValid = true;
+            if (triggerMode == ETriggerMode::eSingle) {
+                singleArmed = false;
+            }
+        }
+        if (triggerMode == ETriggerMode::eAuto) {
+            heldValid = false;
+            singleArmed = true;
+        }
+        else if (triggerMode == ETriggerMode::eNormal) {
+            singleArmed = true;
+        }
+
+        const SWaveformSamples *shownWaveform = &latestWaveform;
+        size_t shownTriggerIndex = triggerIndex;
+        bool shownTriggerFound = triggerFound;
+        bool shownHasWaveform =
+            hasWaveform && (latestWaveform.sampleCount != 0U);
+        bool drawTraces = false;
+
+        if (triggerMode == ETriggerMode::eAuto) {
+            drawTraces = shownHasWaveform;
+        }
+        else if (heldValid) {
+            shownWaveform = &heldWaveform;
+            shownTriggerIndex = static_cast<size_t>(heldTriggerIndex);
+            shownTriggerFound = true;
+            shownHasWaveform = (heldWaveform.sampleCount != 0U);
+            drawTraces = shownHasWaveform;
+        }
 
         ImGui::BeginGroup();
         ImGui::TextUnformatted("Display");
@@ -491,25 +656,89 @@ int main (void) {
         ImDrawList *waveformDrawList = ImGui::GetWindowDrawList();
         const ImVec2 waveformOrigin = ImGui::GetCursorScreenPos();
         const ImVec2 waveformSize = ImGui::GetContentRegionAvail();
+        const float triggerReferenceX =
+            waveformOrigin.x + waveformSize.x * triggerPosition;
+        const size_t displayWindowSamples =
+            computeDisplayWindow(shownWaveform->sampleCount);
+        size_t displayWindowStart = 0U;
+
+        if (shownTriggerFound && (displayWindowSamples > 1U)) {
+            const float preTriggerSamples = triggerPosition *
+                static_cast<float>(displayWindowSamples - 1U);
+            const float windowStartFloat =
+                static_cast<float>(shownTriggerIndex) - preTriggerSamples;
+            size_t maxWindowStart = 0U;
+
+            if (shownWaveform->sampleCount > displayWindowSamples) {
+                maxWindowStart =
+                    shownWaveform->sampleCount - displayWindowSamples;
+            }
+            if (windowStartFloat > 0.0f) {
+                displayWindowStart =
+                    static_cast<size_t>(windowStartFloat + 0.5f);
+                if (displayWindowStart > maxWindowStart) {
+                    displayWindowStart = maxWindowStart;
+                }
+            }
+        }
 
         drawOscilloscopeGrid(waveformDrawList, waveformOrigin, waveformSize);
-        if (hasWaveform && (latestWaveform.sampleCount != 0U)) {
-            if (channelEnabled[0]) {
+        if (shownHasWaveform) {
+            if (drawTraces && channelEnabled[0]) {
                 drawChannelWaveform(
                     waveformDrawList, waveformOrigin, waveformSize,
-                    latestWaveform.channelOne.data(),
-                    latestWaveform.sampleCount, scalingProfile,
+                    shownWaveform->channelOne.data(),
+                    shownWaveform->sampleCount,
+                    displayWindowStart, displayWindowSamples,
+                    scalingProfile,
                     static_cast<double>(channelZeroReference[0]),
                     IM_COL32(255, 214, 0, 255)
                 );
             }
-            if (channelEnabled[1]) {
+            if (drawTraces && channelEnabled[1]) {
                 drawChannelWaveform(
                     waveformDrawList, waveformOrigin, waveformSize,
-                    latestWaveform.channelTwo.data(),
-                    latestWaveform.sampleCount, scalingProfile,
+                    shownWaveform->channelTwo.data(),
+                    shownWaveform->sampleCount,
+                    displayWindowStart, displayWindowSamples,
+                    scalingProfile,
                     static_cast<double>(channelZeroReference[1]),
                     IM_COL32(64, 200, 255, 255)
+                );
+            }
+            if ((scalingProfile != NULL) && triggerHasSignal) {
+                const float pixelsPerDivision = waveformSize.y /
+                    static_cast<float>(scalingProfile->verticalDivisions);
+                const float levelDivisions =
+                    (static_cast<float>(triggerLevel) -
+                        channelZeroReference[triggerSignalChannel]) /
+                    static_cast<float>(scalingProfile->adcCountsPerDivision);
+                const float levelY = waveformOrigin.y +
+                    waveformSize.y * 0.5f - levelDivisions * pixelsPerDivision;
+
+                waveformDrawList->AddLine(
+                    ImVec2(waveformOrigin.x, levelY),
+                    ImVec2(waveformOrigin.x + waveformSize.x, levelY),
+                    IM_COL32(255, 96, 96, 150), 1.0f
+                );
+                /* Vertical reference and "T" marker sit at the fixed
+                 * trigger position; the trace is aligned under it. */
+                waveformDrawList->AddLine(
+                    ImVec2(triggerReferenceX, waveformOrigin.y),
+                    ImVec2(
+                        triggerReferenceX, waveformOrigin.y + waveformSize.y),
+                    IM_COL32(255, 96, 96, 200), 1.0f
+                );
+                waveformDrawList->AddTriangleFilled(
+                    ImVec2(triggerReferenceX - 5.0f, waveformOrigin.y),
+                    ImVec2(triggerReferenceX + 5.0f, waveformOrigin.y),
+                    ImVec2(triggerReferenceX, waveformOrigin.y + 8.0f),
+                    IM_COL32(255, 96, 96, 220)
+                );
+                waveformDrawList->AddText(
+                    ImVec2(triggerReferenceX + 6.0f, waveformOrigin.y + 1.0f),
+                    IM_COL32(255, 96, 96, 255),
+                    "T"
                 );
             }
         }
@@ -666,6 +895,60 @@ int main (void) {
             channelZeroReference[1] = channelBaselineMean[1];
         }
         ImGui::Separator();
+        ImGui::TextUnformatted("Trigger");
+        {
+            const char *triggerSourceLabels[kTriggerSourceOptionCount];
+            const char *triggerSlopeLabels[kTriggerSlopeOptionCount];
+            const char *triggerModeLabels[kTriggerModeOptionCount];
+            int triggerSourceIndex = static_cast<int>(triggerSource);
+            int triggerSlopeIndex = static_cast<int>(triggerSlope);
+            int triggerModeIndex = static_cast<int>(triggerMode);
+            size_t optionIndex = 0U;
+
+            for (optionIndex = 0U;
+                 optionIndex < kTriggerSourceOptionCount; ++optionIndex) {
+                triggerSourceLabels[optionIndex] =
+                    kTriggerSourceOptions[optionIndex].label;
+            }
+            for (optionIndex = 0U;
+                 optionIndex < kTriggerSlopeOptionCount; ++optionIndex) {
+                triggerSlopeLabels[optionIndex] =
+                    kTriggerSlopeOptions[optionIndex].label;
+            }
+            for (optionIndex = 0U;
+                 optionIndex < kTriggerModeOptionCount; ++optionIndex) {
+                triggerModeLabels[optionIndex] =
+                    kTriggerModeOptions[optionIndex].label;
+            }
+
+            if (ImGui::Combo(
+                    "Source", &triggerSourceIndex, triggerSourceLabels,
+                    static_cast<int>(kTriggerSourceOptionCount))) {
+                triggerSource =
+                    kTriggerSourceOptions[triggerSourceIndex].source;
+            }
+            if (ImGui::Combo(
+                    "Slope", &triggerSlopeIndex, triggerSlopeLabels,
+                    static_cast<int>(kTriggerSlopeOptionCount))) {
+                triggerSlope = kTriggerSlopeOptions[triggerSlopeIndex].slope;
+            }
+            ImGui::SliderInt("Level", &triggerLevel, 0, 255);
+            ImGui::SliderFloat(
+                "Position", &triggerPosition, 0.0f, 1.0f, "%.2f"
+            );
+            if (ImGui::Combo(
+                    "Mode", &triggerModeIndex, triggerModeLabels,
+                    static_cast<int>(kTriggerModeOptionCount))) {
+                triggerMode = kTriggerModeOptions[triggerModeIndex].mode;
+            }
+            if (triggerMode == ETriggerMode::eSingle) {
+                if (ImGui::Button("Rearm", ImVec2(-1.0f, 0.0f))) {
+                    singleArmed = true;
+                    heldValid = false;
+                }
+            }
+        }
+        ImGui::Separator();
         if (ImGui::Checkbox("Demo mode", &demoMode)) {
             updateDemoMode(
                 demoMode,
@@ -682,31 +965,42 @@ int main (void) {
 
         char waveformStatus[128];
 
-        if (hasWaveform && latestWaveform.sampleCount != 0U) {
+        if (shownHasWaveform) {
             size_t triggerSampleIndex =
-                static_cast<size_t>(latestTriggerPoint);
+                shownTriggerFound
+                    ? shownTriggerIndex
+                    : static_cast<size_t>(latestTriggerPoint);
 
-            if (triggerSampleIndex >= latestWaveform.sampleCount) {
+            if (triggerSampleIndex >= shownWaveform->sampleCount) {
                 triggerSampleIndex = 0U;
             }
 
             const double channelOneVolts = sampleToVolts(
-                latestWaveform.channelOne[triggerSampleIndex],
+                shownWaveform->channelOne[triggerSampleIndex],
                 scalingProfile->voltageSteps[voltsPerDivision[0]]
                     .valuePerDivision,
                 static_cast<uint8_t>(channelZeroReference[0] + 0.5f),
                 scalingProfile->adcCountsPerDivision
             );
             const double channelTwoVolts = sampleToVolts(
-                latestWaveform.channelTwo[triggerSampleIndex],
+                shownWaveform->channelTwo[triggerSampleIndex],
                 scalingProfile->voltageSteps[voltsPerDivision[1]]
                     .valuePerDivision,
                 static_cast<uint8_t>(channelZeroReference[1] + 0.5f),
                 scalingProfile->adcCountsPerDivision
             );
+            size_t windowRelativeIndex = 0U;
+
+            if (triggerSampleIndex > displayWindowStart) {
+                windowRelativeIndex = triggerSampleIndex - displayWindowStart;
+            }
+            if (windowRelativeIndex >= displayWindowSamples) {
+                windowRelativeIndex = displayWindowSamples - 1U;
+            }
+
             const double triggerSeconds = sampleIndexToSeconds(
-                triggerSampleIndex,
-                latestWaveform.sampleCount,
+                windowRelativeIndex,
+                displayWindowSamples,
                 scalingProfile->timebaseSteps[timebase].valuePerDivision,
                 scalingProfile->horizontalDivisions
             );
@@ -714,9 +1008,12 @@ int main (void) {
             snprintf(
                 waveformStatus,
                 sizeof(waveformStatus),
-                "Waveform %zu samples (trigger %u) CH1 %.3fV CH2 %.3fV @ %.3gs",
-                latestWaveform.sampleCount,
-                static_cast<unsigned int>(latestTriggerPoint),
+                "Waveform %zu samples (%s %zu) CH1 %.3fV CH2 %.3fV @ %.3gs",
+                shownWaveform->sampleCount,
+                shownTriggerFound
+                    ? "trig"
+                   : (triggerMode == ETriggerMode::eAuto ? "auto" : "wait"),
+                triggerSampleIndex,
                 channelOneVolts,
                 channelTwoVolts,
                 triggerSeconds
@@ -1096,6 +1393,26 @@ static void drawOscilloscopeGrid(
 }
 /*----------------------------------------------------------------------------*/
 
+/** @fn computeDisplayWindow */
+static size_t computeDisplayWindow(size_t sampleCount) {
+    size_t windowSamples = sampleCount;
+
+    if (sampleCount > 2U) {
+        windowSamples = static_cast<size_t>(
+            static_cast<float>(sampleCount) * kDisplayWindowFraction + 0.5f
+        );
+        if (windowSamples < 2U) {
+            windowSamples = 2U;
+        }
+        if (windowSamples > sampleCount) {
+            windowSamples = sampleCount;
+        }
+    }
+
+    return windowSamples;
+}
+/*----------------------------------------------------------------------------*/
+
 /** @fn drawChannelWaveform */
 static void drawChannelWaveform(
     ImDrawList *drawList,
@@ -1103,6 +1420,8 @@ static void drawChannelWaveform(
     const ImVec2 &size,
     const uint8_t *samples,
     size_t sampleCount,
+    size_t windowStart,
+    size_t windowLength,
     const SInstrumentScalingProfile *profile,
     double zeroReference,
     ImU32 color
@@ -1111,18 +1430,20 @@ static void drawChannelWaveform(
     const float centerY = position.y + size.y * 0.5f;
     size_t index = 0U;
 
-    if ((samples != NULL) && (profile != NULL) && (sampleCount > 1U)) {
+    if ((samples != NULL) && (profile != NULL) && (windowLength > 1U) &&
+        ((windowStart + windowLength) <= sampleCount)) {
         const float pixelsPerDivision =
             static_cast<float>(size.y / profile->verticalDivisions);
 
-        points.reserve(sampleCount);
-        for (index = 0U; index < sampleCount; ++index) {
+        points.reserve(windowLength);
+        for (index = 0U; index < windowLength; ++index) {
+            const size_t sampleIndex = windowStart + index;
             const double divisions =
-                (static_cast<double>(samples[index]) - zeroReference) /
+                (static_cast<double>(samples[sampleIndex]) - zeroReference) /
                 profile->adcCountsPerDivision;
             const float x = position.x + size.x *
                 static_cast<float>(index) /
-                static_cast<float>(sampleCount - 1U);
+                static_cast<float>(windowLength - 1U);
             const float y = centerY -
                 static_cast<float>(divisions) * pixelsPerDivision;
 
