@@ -143,6 +143,28 @@ static void drawOscilloscopeGrid(
 );
 
 /**
+ * @brief Draws one channel's waveform as a polyline into a draw list
+ * @param[in] drawList ImGui draw list to render into
+ * @param[in] position Top-left corner of the plot area in screen space
+ * @param[in] size Plot-area dimensions in pixels
+ * @param[in] samples Raw ADC bytes to plot, one per horizontal step
+ * @param[in] sampleCount Number of samples to read from @p samples
+ * @param[in] profile Scaling profile giving the ADC-to-division mapping
+ * @param[in] zeroReference Raw ADC level treated as zero volts for this channel
+ * @param[in] color Polyline color
+ */
+static void drawChannelWaveform(
+    ImDrawList *drawList,
+    const ImVec2 &position,
+    const ImVec2 &size,
+    const uint8_t *samples,
+    size_t sampleCount,
+    const SInstrumentScalingProfile *profile,
+    double zeroReference,
+    ImU32 color
+);
+
+/**
  * @brief Checks whether a device is still present in a scan result
  * @param[in] scanResult Latest supported-device scan result
  * @param[in] deviceInfo Device identity to look for
@@ -330,6 +352,8 @@ int main (void) {
     bool channelEnabled[] = {true, true};
     int timebase = 6;
     int voltsPerDivision[] = {7, 7};
+    float channelZeroReference[] = {128.0f, 128.0f};
+    float channelBaselineMean[] = {128.0f, 128.0f};
     SUsbScanResult usbScanResult =
         oscilloscope::usb::enumerateSupportedDevices();
     bool demoMode =
@@ -390,6 +414,27 @@ int main (void) {
             )
         ) {
             hasWaveform = true;
+            /* Track per-channel mean baseline for the Set zero action. */
+            if (latestWaveform.sampleCount != 0U) {
+                unsigned long sumOne = 0UL;
+                unsigned long sumTwo = 0UL;
+                size_t sampleIndex = 0U;
+
+                for (
+                    sampleIndex = 0U;
+                    sampleIndex < latestWaveform.sampleCount;
+                    ++sampleIndex
+                ) {
+                    sumOne += latestWaveform.channelOne[sampleIndex];
+                    sumTwo += latestWaveform.channelTwo[sampleIndex];
+                }
+                channelBaselineMean[0] = static_cast<float>(
+                    static_cast<double>(sumOne) / latestWaveform.sampleCount
+                );
+                channelBaselineMean[1] = static_cast<float>(
+                    static_cast<double>(sumTwo) / latestWaveform.sampleCount
+                );
+            }
         }
 
         if (ImGui::BeginMainMenuBar()) {
@@ -428,6 +473,9 @@ int main (void) {
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus
         );
 
+        const SInstrumentScalingProfile *scalingProfile =
+            resolveActiveScalingProfile(connectedDevice, usbScanResult);
+
         ImGui::BeginGroup();
         ImGui::TextUnformatted("Display");
         ImVec2 displaySize = ImGui::GetContentRegionAvail();
@@ -440,11 +488,31 @@ int main (void) {
             true,
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
         );
-        drawOscilloscopeGrid(
-            ImGui::GetWindowDrawList(),
-            ImGui::GetCursorScreenPos(),
-            ImGui::GetContentRegionAvail()
-        );
+        ImDrawList *waveformDrawList = ImGui::GetWindowDrawList();
+        const ImVec2 waveformOrigin = ImGui::GetCursorScreenPos();
+        const ImVec2 waveformSize = ImGui::GetContentRegionAvail();
+
+        drawOscilloscopeGrid(waveformDrawList, waveformOrigin, waveformSize);
+        if (hasWaveform && (latestWaveform.sampleCount != 0U)) {
+            if (channelEnabled[0]) {
+                drawChannelWaveform(
+                    waveformDrawList, waveformOrigin, waveformSize,
+                    latestWaveform.channelOne.data(),
+                    latestWaveform.sampleCount, scalingProfile,
+                    static_cast<double>(channelZeroReference[0]),
+                    IM_COL32(255, 214, 0, 255)
+                );
+            }
+            if (channelEnabled[1]) {
+                drawChannelWaveform(
+                    waveformDrawList, waveformOrigin, waveformSize,
+                    latestWaveform.channelTwo.data(),
+                    latestWaveform.sampleCount, scalingProfile,
+                    static_cast<double>(channelZeroReference[1]),
+                    IM_COL32(64, 200, 255, 255)
+                );
+            }
+        }
         ImGui::EndChild();
         statusPosition = ImGui::GetCursorScreenPos();
         ImGui::EndGroup();
@@ -548,8 +616,6 @@ int main (void) {
             ImGui::EndDisabled();
         }
 
-        const SInstrumentScalingProfile *scalingProfile =
-            resolveActiveScalingProfile(connectedDevice, usbScanResult);
         std::vector<const char*> timebaseLabels;
         std::vector<const char*> voltageScaleLabels;
 
@@ -595,6 +661,10 @@ int main (void) {
             );
             ImGui::PopID();
         }
+        if (ImGui::Button("Set zero", ImVec2(-1.0f, 0.0f))) {
+            channelZeroReference[0] = channelBaselineMean[0];
+            channelZeroReference[1] = channelBaselineMean[1];
+        }
         ImGui::Separator();
         if (ImGui::Checkbox("Demo mode", &demoMode)) {
             updateDemoMode(
@@ -624,14 +694,14 @@ int main (void) {
                 latestWaveform.channelOne[triggerSampleIndex],
                 scalingProfile->voltageSteps[voltsPerDivision[0]]
                     .valuePerDivision,
-                scalingProfile->adcCenterValue,
+                static_cast<uint8_t>(channelZeroReference[0] + 0.5f),
                 scalingProfile->adcCountsPerDivision
             );
             const double channelTwoVolts = sampleToVolts(
                 latestWaveform.channelTwo[triggerSampleIndex],
                 scalingProfile->voltageSteps[voltsPerDivision[1]]
                     .valuePerDivision,
-                scalingProfile->adcCenterValue,
+                static_cast<uint8_t>(channelZeroReference[1] + 0.5f),
                 scalingProfile->adcCountsPerDivision
             );
             const double triggerSeconds = sampleIndexToSeconds(
@@ -1021,6 +1091,49 @@ static void drawOscilloscopeGrid(
             ImVec2(position.x, y),
             ImVec2(position.x + size.x, y),
             index % 5 == 0 ? majorColor : minorColor
+        );
+    }
+}
+/*----------------------------------------------------------------------------*/
+
+/** @fn drawChannelWaveform */
+static void drawChannelWaveform(
+    ImDrawList *drawList,
+    const ImVec2 &position,
+    const ImVec2 &size,
+    const uint8_t *samples,
+    size_t sampleCount,
+    const SInstrumentScalingProfile *profile,
+    double zeroReference,
+    ImU32 color
+) {
+    std::vector<ImVec2> points;
+    const float centerY = position.y + size.y * 0.5f;
+    size_t index = 0U;
+
+    if ((samples != NULL) && (profile != NULL) && (sampleCount > 1U)) {
+        const float pixelsPerDivision =
+            static_cast<float>(size.y / profile->verticalDivisions);
+
+        points.reserve(sampleCount);
+        for (index = 0U; index < sampleCount; ++index) {
+            const double divisions =
+                (static_cast<double>(samples[index]) - zeroReference) /
+                profile->adcCountsPerDivision;
+            const float x = position.x + size.x *
+                static_cast<float>(index) /
+                static_cast<float>(sampleCount - 1U);
+            const float y = centerY -
+                static_cast<float>(divisions) * pixelsPerDivision;
+
+            points.push_back(ImVec2(x, y));
+        }
+        drawList->AddPolyline(
+            points.data(),
+            static_cast<int>(points.size()),
+            color,
+            ImDrawFlags_None,
+            1.5f
         );
     }
 }
