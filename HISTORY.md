@@ -484,3 +484,22 @@ Records key decisions, structural changes, and completed development stages.
 - Kept the calibration-derived `SetOffset` (`0xB4`) write, relay
   (`0xB5`) configuration, and calibration reads (`0xA2`) unchanged.
 
+### Stage 4 - Corrected the capture read size and confirmed the data path
+
+- Verified on hardware that the arming group works: the acquisition error
+  changed from silent no-waveform to `USB timeout while reading channel
+  data`, proving the capture engine now reaches `captureCompleteState` (```3```)
+  and accepts the `0x05` GetData command.
+- Measured the true capture size from the reference dump with `tshark`: one
+  capture is 40 bulk-IN (`0x86`) packets of 512 bytes = 20480 bytes = 10240
+  samples per channel (two channels interleaved), selected by record-length
+  id `1` (`0x0d 0f 01 00`). The profile declared `sampleCount = 32768`, so
+  the application requested 128 packets, received 40, and blocked on the
+  41st packet until the read timed out.
+- Corrected `sampleCount` from `32768` to `10240` in both DSO-2250 USB
+  profiles (bootloader and operational) in `usb/src/usb_device.cpp`; the
+  fixed sample and packet buffers accommodate the smaller size unchanged.
+- Confirmed on hardware: the oscilloscope now returns valid waveform data
+  over USB. On-screen rendering is not yet implemented, so Stage 4 remains
+  open until the captured samples are drawn.
+
