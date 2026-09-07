@@ -60,14 +60,14 @@ static const SSupportedDevice kSupportedDevices[] = {
     /* The bootloader exposes the bulk pair on alt setting 1. */
     {
         "Hantek DSO-2250 Bootloader", "DSO2250",
-        { 32768U, 512U, 0x02U, 0x86U, 2U, true, 3U, 6U, 5U, 3U, 4U, 2U, 0U, 1U,
+        { 10240U, 512U, 0x02U, 0x86U, 2U, true, 3U, 6U, 5U, 3U, 4U, 2U, 0U, 1U,
           7U, 0xB5U, 0xA2U, 0xB4U },
         core::EInstrumentModel::eHantekDso2250,
         0x04B4U, 0x2250U, 0x04B5U, 0U, 1U, true
     },
     {
         "Hantek DSO-2250", "DSO2250",
-        { 32768U, 512U, 0x02U, 0x86U, 2U, true, 3U, 6U, 5U, 3U, 4U, 2U, 0U, 1U,
+        { 10240U, 512U, 0x02U, 0x86U, 2U, true, 3U, 6U, 5U, 3U, 4U, 2U, 0U, 1U,
           7U, 0xB5U, 0xA2U, 0xB4U },
         core::EInstrumentModel::eHantekDso2250,
         0x04B5U, 0x2250U, 0x04B5U, 0U, 0U, false

@@ -70,15 +70,43 @@ static const unsigned int kForceRestartThreshold = 3U;
  */
 static const uint8_t kDefaultVoltageRangeCode = 0U;    /**< VOLTAGE_5V */
 static const uint8_t kDefaultCouplingDc = 0U;          /**< COUPLING_AC */
-static const uint8_t kDefaultSelectedChannel = 2U;     /**< SELECT_CH1CH2 */
-static const uint8_t kDefaultTriggerSource = 1U;       /**< TRIGGER_CH1 */
-static const uint8_t kDefaultTriggerSlope = 0U;        /**< SLOPE_POSITIVE */
-static const uint8_t kDefaultSampleSizeCode = 2U;      /**< BUFFER_LARGE */
-static const uint16_t kDefaultTimeBaseValue = 0xFFF7U; /**< TIME_1ms preset */
-/** 1ms/div is past the fast range */
-static const uint8_t kDefaultTimeBaseFastCode = 4U;
-/** No-offset trigger position */
-static const uint32_t kDefaultTriggerPosition = 0x77660U;
+
+/**
+ * @brief DSO-2250 acquisition-configuration command group (0x0b-0x0f)
+ * @details The DSO-2090 setTriggerNSampleRate command (0x01) does NOT arm
+ * the DSO-2250 capture engine. This model needs the extended command group
+ * 0x0b-0x0f - set channels, trigger source, record length, sample rate and
+ * trigger position. Without it GetCaptureState never leaves its power-on
+ * state and no waveform is ever returned. The byte values below reproduce
+ * the known-good sequence captured from the vendor Windows driver (see
+ * WorkingDocs USB captures): both channels, internal CH1 trigger, large
+ * record buffer and a centered trigger position. TEMPORARY fixed
+ * configuration until Stage 5 wires the Timebase/Scale/Trigger UI controls.
+ */
+static const uint8_t kDso2250SetTriggerSource[8] = {
+    0x0CU, 0x0FU, 0x02U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U
+};
+/** Channel-enable command: both channels active */
+static const uint8_t kDso2250SetChannels[4] = {
+    0x0BU, 0x0FU, 0x00U, 0x00U
+};
+/** Record-length command: large capture buffer */
+static const uint8_t kDso2250SetRecordLength[4] = {
+    0x0DU, 0x0FU, 0x01U, 0x00U
+};
+/** Sample-rate command: default acquisition rate */
+static const uint8_t kDso2250SetSampleRate[8] = {
+    0x0EU, 0x00U, 0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U
+};
+/** Trigger-position command: centered post/pre-trigger window */
+static const uint8_t kDso2250SetTriggerPosition[12] = {
+    0x0FU, 0x00U, 0xFEU, 0xD7U, 0x07U, 0x00U,
+    0xFEU, 0xFFU, 0x07U, 0x00U, 0x00U, 0x00U
+};
+/** GetLogicalData command: primes the logic/auto-range subsystem */
+static const uint8_t kDso2250GetLogicalData[2] = {
+    0x09U, 0x00U
+};
 
 /**
  * @brief Channel/trigger offset DAC configuration sent once before the
@@ -154,6 +182,22 @@ static usb::SUsbTransferResult readCaptureData(
  * with values derived from the Timebase/Scale/Trigger UI controls.
  */
 static usb::SUsbTransferResult configureCapture(
+    const usb::SUsbConnection &connection,
+    EAcquisitionOperation *failedOperation
+);
+
+/**
+ * @brief Sends the DSO-2250 acquisition-configuration command group
+ * @details Primes the logic/auto-range subsystem with GetLogicalData
+ * (0x09), draining its bulk-IN response, then issues the extended commands
+ * 0x0b-0x0f that arm the DSO-2250 capture engine (channels, trigger source,
+ * record length, sample rate, trigger position). Replaces the DSO-2090
+ * setTriggerNSampleRate (0x01) command, which the DSO-2250 ignores.
+ * @param[in] connection USB connection to configure
+ * @param[out] failedOperation First operation that failed
+ * @returns Result of the first failed operation or the final successful write
+ */
+static usb::SUsbTransferResult configureDso2250Timebase(
     const usb::SUsbConnection &connection,
     EAcquisitionOperation *failedOperation
 );
@@ -612,6 +656,84 @@ static uint8_t channelLevelCenterByte(
 
 /*----------------------------------------------------------------------------*/
 
+/** @fn configureDso2250Timebase */
+static usb::SUsbTransferResult configureDso2250Timebase(
+    const usb::SUsbConnection &connection,
+    EAcquisitionOperation *failedOperation
+) {
+    struct SConfigCommand {
+        const uint8_t *payload; /**< Command bytes */
+        int length;             /**< Number of command bytes */
+    };
+    const SConfigCommand commands[5] = {
+        {
+            kDso2250SetTriggerSource,
+            static_cast<int>(sizeof(kDso2250SetTriggerSource))
+        },
+        {
+            kDso2250SetChannels,
+            static_cast<int>(sizeof(kDso2250SetChannels))
+        },
+        {
+            kDso2250SetRecordLength,
+            static_cast<int>(sizeof(kDso2250SetRecordLength))
+        },
+        {
+            kDso2250SetSampleRate,
+            static_cast<int>(sizeof(kDso2250SetSampleRate))
+        },
+        {
+            kDso2250SetTriggerPosition,
+            static_cast<int>(sizeof(kDso2250SetTriggerPosition))
+        }
+    };
+    uint8_t logicalData[kRawUsbPacketMaxSize];
+    usb::SUsbTransferResult result = {
+        usb::EUsbTransferStatus::eSuccess, 0, ""
+    };
+    size_t index = 0U;
+
+    /* GetLogicalData (0x09) primes the logic/auto-range subsystem and
+       returns one bulk-IN packet that the vendor driver drains before the
+       analog arming group; the payload itself is unused here. */
+    result = executeCommand(
+        connection,
+        kDso2250GetLogicalData,
+        static_cast<int>(sizeof(kDso2250GetLogicalData)),
+        EAcquisitionOperation::eSetTriggerNSampleRateCmd,
+        failedOperation
+    );
+    if (result.status == usb::EUsbTransferStatus::eSuccess) {
+        *failedOperation = EAcquisitionOperation::eSetTriggerNSampleRateCmd;
+        result = usb::bulkRead(
+            connection,
+            connection.captureProtocol.bulkInEndpoint,
+            logicalData,
+            connection.captureProtocol.bulkInPacketLength,
+            kTransferTimeoutMs,
+            kTransferAttempts,
+            connection.captureProtocol.bulkInPacketLength
+        );
+    }
+
+    for (index = 0U;
+         (index < 5U) &&
+         (result.status == usb::EUsbTransferStatus::eSuccess);
+         ++index) {
+        result = executeCommand(
+            connection,
+            commands[index].payload,
+            commands[index].length,
+            EAcquisitionOperation::eSetTriggerNSampleRateCmd,
+            failedOperation
+        );
+    }
+
+    return result;
+}
+
+/*----------------------------------------------------------------------------*/
+
 /** @fn configureCapture */
 static usb::SUsbTransferResult configureCapture(
     const usb::SUsbConnection &connection,
@@ -620,25 +742,6 @@ static usb::SUsbTransferResult configureCapture(
     const uint8_t filterCommand[8] = {
         connection.captureProtocol.setFilterCmd, 0x0FU,
         0U, 0U, 0U, 0U, 0U, 0U
-    };
-    const uint8_t tsrByte1 = static_cast<uint8_t>(
-        kDefaultTriggerSource |
-        (kDefaultSampleSizeCode << 2U) |
-        (kDefaultTimeBaseFastCode << 5U)
-    );
-    const uint8_t tsrByte2 = static_cast<uint8_t>(
-        kDefaultSelectedChannel | (kDefaultTriggerSlope << 3U)
-    );
-    const uint8_t triggerNSampleRateCmd[12] = {
-        connection.captureProtocol.setTriggerNSampleRateCmd, 0U,
-        tsrByte1, tsrByte2,
-        static_cast<uint8_t>(kDefaultTimeBaseValue),
-        static_cast<uint8_t>(kDefaultTimeBaseValue >> 8U),
-        static_cast<uint8_t>(kDefaultTriggerPosition),
-        static_cast<uint8_t>(kDefaultTriggerPosition >> 8U),
-        0U, 0U,
-        static_cast<uint8_t>(kDefaultTriggerPosition >> 16U),
-        0U
     };
     const uint8_t voltageByte = static_cast<uint8_t>(
         (2U - (kDefaultVoltageRangeCode % 3U)) |
@@ -684,13 +787,7 @@ static usb::SUsbTransferResult configureCapture(
         failedOperation
     );
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
-        result = executeCommand(
-            connection,
-            triggerNSampleRateCmd,
-            sizeof(triggerNSampleRateCmd),
-            EAcquisitionOperation::eSetTriggerNSampleRateCmd,
-            failedOperation
-        );
+        result = configureDso2250Timebase(connection, failedOperation);
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         result = executeCommand(
@@ -744,13 +841,7 @@ static usb::SUsbTransferResult configureCapture(
         );
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
-        result = executeCommand(
-            connection,
-            triggerNSampleRateCmd,
-            sizeof(triggerNSampleRateCmd),
-            EAcquisitionOperation::eSetTriggerNSampleRateCmd,
-            failedOperation
-        );
+        result = configureDso2250Timebase(connection, failedOperation);
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
         *failedOperation = EAcquisitionOperation::eNone;

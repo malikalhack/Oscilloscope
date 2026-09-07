@@ -427,3 +427,79 @@ Records key decisions, structural changes, and completed development stages.
   root cause remains open. Treated as a known, unresolved bug pending
   further hardware-side USB capture analysis.
 
+## 2026-09-07
+
+### Root cause found - DSO-2250 needs the extended 0x0b-0x0f command group
+
+- Correlated the Windows reference-driver capture against the application's
+  own USB capture with `tshark` and found the application implements only the
+  DSO-2090 command set (`0x00`-`0x07`), while the DSO-2250 requires the
+  extended acquisition-configuration commands `0x0b`-`0x0f`. The DSO-2090
+  `SetTriggerAndSampleRate` command (`0x01`) is silently ignored by the
+  DSO-2250, so the capture engine never arms and `GetCaptureState` stays in
+  its power-on state forever.
+- Bulk-OUT command comparison (reference vs application): `0x01` sent 0 vs 2
+  (the ignored 2090 command), `0x05` GetData 237 vs 0 (analog data never
+  read), `0x09` GetLogicalData 78 vs 0, and each of `0x0b`-`0x0f` 78 vs 0
+  (the arming group is entirely absent from the application).
+
+### Recorded - full DSO-2250 bulk-command semantics from OpenHantek
+
+- Documented the DSO-2250 bulk-command semantics decoded from the OpenHantek
+  project (`hantekprotocol/bulkcode.h`) for future protocol work:
+  - `0x00` SetFilter, `0x01` SetTriggerAndSampleRate (DSO-2090 only, ignored
+    by the DSO-2250), `0x02` ForceTrigger, `0x03` StartSampling, `0x04`
+    EnableTrigger, `0x05` GetData, `0x06` GetCaptureState, `0x07` SetGain.
+  - `0x08` SetLogicalData, `0x09` GetLogicalData, `0x0a` unknown.
+  - `0x0b` BSetChannels - enabled-channel selection, `[0b][00][channels][00]`.
+  - `0x0c` CSetTriggerOrSampleRate - trigger source/bits,
+    `[0c][00][triggerBits][00]...`.
+  - `0x0d` DSetBuffer - record-length id, `[0d][00][recordLenId][00]`.
+  - `0x0e` ESetTriggerOrSampleRate - sample-rate bits,
+    `[0e][00][srBits][00][sr0][sr1][00][00]`.
+  - `0x0f` FSetBuffer - trigger position, `[0f][00][postTrig0-2][00]`
+    `[preTrig0-2][00][00][00]`.
+  - Completed-capture state value for the DSO-2250 is `3`
+    (`CAPTURE_READY2250`).
+- Recorded the known-good reference configuration bytes captured immediately
+  before the first successful capture, for the arming group used below:
+  `0x0c` `0c 0f 02 00 02 00 00 00`, `0x0b` `0b 0f 00 00`, `0x0d`
+  `0d 0f 01 00`, `0x0e` `0e 00 01 00 00 00 00 00`, `0x0f`
+  `0f 00 fe d7 07 00 fe ff 07 00 00 00`, sent in the order
+  `0c, 0b, 0d, 0e, 0f`.
+
+### Stage 4 - Send the DSO-2250 acquisition-configuration command group
+
+- Replaced both DSO-2090 `SetTriggerAndSampleRate` (`0x01`) sends in
+  `configureCapture()` with a new `configureDso2250Timebase()` helper that
+  issues the extended arming group `0x0c, 0x0b, 0x0d, 0x0e, 0x0f` using the
+  known-good reference bytes, reusing the existing begin-command/speed-check
+  bulk framing.
+- Prepended `0x09` GetLogicalData to the arming group and drained the single
+  512-byte bulk-IN (`0x86`) response it returns, mirroring the reference
+  driver, so the logic/auto-range subsystem is initialised the same way
+  before analog capture.
+- Removed the now-unused DSO-2090 timebase constants and added the DSO-2250
+  command payloads as named constants.
+- Kept the calibration-derived `SetOffset` (`0xB4`) write, relay
+  (`0xB5`) configuration, and calibration reads (`0xA2`) unchanged.
+
+### Stage 4 - Corrected the capture read size and confirmed the data path
+
+- Verified on hardware that the arming group works: the acquisition error
+  changed from silent no-waveform to `USB timeout while reading channel
+  data`, proving the capture engine now reaches `captureCompleteState` (```3```)
+  and accepts the `0x05` GetData command.
+- Measured the true capture size from the reference dump with `tshark`: one
+  capture is 40 bulk-IN (`0x86`) packets of 512 bytes = 20480 bytes = 10240
+  samples per channel (two channels interleaved), selected by record-length
+  id `1` (`0x0d 0f 01 00`). The profile declared `sampleCount = 32768`, so
+  the application requested 128 packets, received 40, and blocked on the
+  41st packet until the read timed out.
+- Corrected `sampleCount` from `32768` to `10240` in both DSO-2250 USB
+  profiles (bootloader and operational) in `usb/src/usb_device.cpp`; the
+  fixed sample and packet buffers accommodate the smaller size unchanged.
+- Confirmed on hardware: the oscilloscope now returns valid waveform data
+  over USB. On-screen rendering is not yet implemented, so Stage 4 remains
+  open until the captured samples are drawn.
+
