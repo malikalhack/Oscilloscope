@@ -1,6 +1,6 @@
 /**
  * @file    main.cpp
- * @version 0.2.11
+ * @version 0.2.12
  * @authors Anton Chernov
  * @date    2026-08-28
  * @date    @showdate "%Y-%m-%d"
@@ -38,7 +38,7 @@
  * @def VERSION_PATCH
  * @brief Patch version number of Oscilloscope (backwards-compatible bug fixes).
  */
-#define VERSION_PATCH     11
+#define VERSION_PATCH     12
 
 /**
  * @def VERSION_STR_
@@ -184,9 +184,9 @@ static const size_t kTriggerSourceOptionCount =
 #ifdef __GNUC__  // GCC/MinGW only
 const char kVersionInfo[] __attribute__((section(".version"), used)) =
     "FileDescription: Oscilloscope application\n"
-    "FileVersion: 0.2.11.0\n"
+    "FileVersion: 0.2.12.0\n"
     "ProductName: Oscilloscope\n"
-    "ProductVersion: 0.2.11.0\n"
+    "ProductVersion: 0.2.12.0\n"
     "CompanyName: N/A\n"
     "LegalCopyright: Copyright (C) Anton Chernov, 2026\n"
     "OriginalFilename: run\n";

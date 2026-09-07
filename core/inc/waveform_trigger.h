@@ -1,6 +1,6 @@
 /**
  * @file    waveform_trigger.h
- * @version 0.2.9
+ * @version 0.2.12
  * @authors Anton Chernov
  * @date    2026-09-07
  * @date    @showdate "%Y-%m-%d"
