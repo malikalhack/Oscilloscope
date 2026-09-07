@@ -32,6 +32,10 @@ libusb for communication with supported instruments.
 - thread-safe publication of the latest decoded waveform and trigger point.
 - a per-device capture profile selected from the supported-device table.
 - deterministic voltage and timebase scaling of raw capture samples.
+- live two-channel waveform rendering on the display grid.
+- Auto, Normal, and Single edge triggering with a movable trigger Position,
+  a fixed "T" reference marker, and a display window that keeps the trace
+  filling the full width with pre/post-trigger reserve.
 
 ## Architecture
 
@@ -81,6 +85,8 @@ complete installation, build, and run instructions.
 
 ## Planned work
 
-The next task is displaying live waveforms. Instrument controls, broader
-recovery behavior, and persistent configuration follow in later milestones.
+The next task is driving the horizontal display window length from the Timebase
+control using the device's real sample period. A vertical Level slider,
+per-channel zero-position controls, cursor-based measurements, broader recovery
+behavior, and persistent configuration follow in later milestones.
 

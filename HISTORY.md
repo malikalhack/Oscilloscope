@@ -597,5 +597,26 @@ Records key decisions, structural changes, and completed development stages.
   control, so the aligned trace keeps enough history to fill the display left
   of the "T" marker instead of leaving an empty region.
 
+### Stage 4 - Windowed the record under a fixed trigger marker
+
+- Displayed only a fraction of the captured record (a window) so the surplus
+  samples act as pre/post-trigger reserve, letting the trace fill the whole
+  display under the fixed "T" marker without an empty region on either side.
+- Slid the window so the trigger sample sits under the marker, clamping the
+  window to the record bounds; at the reserve limit the marker drifts slightly
+  rather than exposing an empty edge.
+- Replaced the pixel-shift parameter of `drawChannelWaveform` with a window
+  start and length, and added `computeDisplayWindow` to size the window.
+- Verified on a physical Hantek DSO-2250 with a noise signal, the trigger
+  centered, and Normal sweep: the trace reaches the right edge and starts at
+  the left edge with no gaps. Confirmed at Position 0 and Position 90 as well.
+
+### Next windowing tasks
+
+- Phase 2: derive the display window length from the Timebase control using the
+  device's real sample period, so the Timebase combo drives the horizontal
+  span. Requires confirming the true sample period from the reference USB
+  captures before wiring it to the window length.
+
 
 

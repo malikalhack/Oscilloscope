@@ -15,7 +15,8 @@ The application currently provides:
 - supported Hantek device discovery and connection through libusb;
 - FX2 firmware upload and operational-device re-enumeration;
 - Start/Stop-controlled endpoint polling;
-- bounded USB error recovery and safe device-loss handling.
+- bounded USB error recovery and safe device-loss handling;
+- live two-channel waveform rendering with edge triggering.
 
 Capture-state responses and sample buffers are decoded by deterministic,
 hardware-independent parser functions. Each supported-device entry supplies its
@@ -25,8 +26,10 @@ worker reads and queues the complete profile-defined sample buffer, then starts
 the next capture. A processing worker decodes complete captures and publishes
 the latest frame and trigger point safely for rendering. Deterministic
 functions convert raw capture samples into volts and elapsed capture time from
-the selected voltage-scale and timebase settings. Live waveform rendering is
-not yet implemented.
+the selected voltage-scale and timebase settings. Both channels are plotted on
+the display grid with Auto, Normal, and Single edge triggering, a movable
+trigger Position with a fixed "T" reference marker, and a display window that
+keeps the trace filling the full width with pre/post-trigger reserve.
 
 ## Planned Stack
 
@@ -217,18 +220,14 @@ CI can update only the version metadata by passing `--skip-build`.
 
 ## Known Issues
 
-- Live capture on a physical Hantek DSO-2250 never reports a waveform:
-  `GetCaptureState` polling stays at the empty-buffer state, so no channel
-  data is read. Demo mode and the full CTest suite are unaffected. See
-  `HISTORY.md` ("Known issue - live capture on real DSO-2250 hardware
-  reports no waveform") for the investigation and ruled-out causes.
+- None currently tracked.
 
 ## Next Steps
 
-1. Diagnose the live-capture-never-completes issue on real DSO-2250
-   hardware.
-2. Render live and demo waveforms on the display grid.
-3. Implement the two-channel model, timebase, and instrument controls.
+1. Drive the horizontal display window length from the Timebase control using
+   the device's real sample period.
+2. Add a vertical Level slider and per-channel zero-position controls.
+3. Implement cursor-based measurements.
 
 The full goals, constraints, and architecture are documented in
 `WorkingDocs/TECHNICAL_SPECIFICATION.md`.
