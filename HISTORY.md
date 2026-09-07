@@ -243,7 +243,6 @@ Records key decisions, structural changes, and completed development stages.
 
 ### Next USB tasks
 
-- Decode capture-state responses and acquired sample packets.
 - Add deterministic fault-injection tests for timeout and transfer-error
   recovery, then verify recovery with a connected physical device.
 
@@ -502,4 +501,56 @@ Records key decisions, structural changes, and completed development stages.
 - Confirmed on hardware: the oscilloscope now returns valid waveform data
   over USB. On-screen rendering is not yet implemented, so Stage 4 remains
   open until the captured samples are drawn.
+
+### Stage 4 - Render both channel waveforms to the display area
+
+- Added a `drawChannelWaveform()` helper in `app/main.cpp` that maps each raw
+  ADC byte to a vertical division via `(sample - adcCenterValue) /
+  adcCountsPerDivision`, spreads the samples across the plot width, and draws
+  the trace with `ImDrawList::AddPolyline`.
+- Rendered both channels in the display child after the grid: CH1 in yellow
+  and CH2 in cyan, each gated by its channel-enable checkbox.
+- Moved the active scaling-profile resolution ahead of the display group so
+  the plot and the Controls panel share the same profile lookup.
+- Confirmed on hardware: both channel traces are drawn and track the numeric
+  readout. The traces sit below center because the captured baseline is
+  offset from the assumed ADC center; vertical positioning/offset calibration
+  is left for a later stage.
+
+### Stage 4 - Corrected the offset calibration decode and added a zero reference
+
+- Fixed the endianness of `channelLevelCenter()` in
+  `capture/src/acquisition_loop.cpp`: the offset calibration table stores each
+  16-bit value most-significant byte first, so the previous little-endian read
+  produced garbage DAC values (35200/23040) instead of the calibrated
+  midpoints. The decode now yields 137 for CH1 and 90 for CH2, matching the
+  same-device reference dump.
+- Added a per-channel software zero reference in `app/main.cpp`: the running
+  mean of each captured channel feeds a `Set zero` control that stores the
+  present baseline as the zero-volt reference. Both the voltage readout and the
+  waveform rendering use this per-channel reference instead of a fixed ADC
+  center, so a grounded input reads 0 V regardless of where the offset DAC
+  places the trace on the ADC range.
+- Confirmed on hardware: with no signal, pressing `Set zero` brings both
+  channels to 0 V and centers their traces. This mirrors the original
+  instrument's manual zero-set behavior.
+
+### Stage 4 - Matched the offset calibration index to the 5V/div range
+
+- Recorded a controlled reference capture (`WorkingDocs/Win7-zero-positions.pcapng`)
+  of the original application at 5 V/div, AC, gain factor 1, both channels, 4 ns
+  timebase, moving each channel's zero marker top/center/bottom and pressing
+  reset-to-zero. Decoding its `B4` SetOffset writes showed the zero (reset)
+  position equals the mid-point of the offset DAC range: CH1 range 13..142
+  (centre 77), CH2 range 5..133 (centre 68).
+- These ranges match the calibration table's third gain slot `(13,143)` /
+  `(5,134)`, confirming that 5 V/div with gain factor 1 uses calibration index
+  2, not index 3. Updated `kChannelLevelRangeIndex` from 3 to 2 in
+  `capture/src/acquisition_loop.cpp` so the device is seeded with the same
+  DAC values the original software writes for this range.
+- The captured no-signal baseline still sits low (about -5.7 V before pressing
+  `Set zero`); moving the analog baseline toward the ADC centre for symmetric
+  headroom is deferred to a later stage. The software zero reference already
+  yields a correct 0 V reading.
+
 

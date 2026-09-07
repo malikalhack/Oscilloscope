@@ -121,10 +121,15 @@ static const uint8_t kDso2250GetLogicalData[2] = {
 static const uint16_t kControlValueChannelLevel = 0x0008U;
 /** 2 channels x 9 ranges x 2 (start,end) 16-bit entries */
 static const uint16_t kChannelLevelTableBytes = 72U;
-/** Index of the 5V range entry (ranges are stored from 10mV to 5V) */
-static const size_t kChannelLevelRangeIndex = 8U;
-/** Constant high-byte marker seen on every offset DAC write */
-static const uint8_t kOffsetDacMarkerByte = 0x20U;
+/** Calibration entry index for the active 5V/div, gain-factor-1 offset step
+    (matches the same-device 5V/div capture that resets to DAC 77/68 counts) */
+static const size_t kChannelLevelRangeIndex = 2U;
+/** High-nibble marker for the CH1 offset DAC high byte */
+static const uint8_t kOffsetDacMarkerCh1 = 0x20U;
+/** High-nibble marker for the CH2 offset DAC high byte */
+static const uint8_t kOffsetDacMarkerCh2 = 0x30U;
+/** High-nibble marker for the trigger-level DAC high byte */
+static const uint8_t kOffsetDacMarkerTrigger = 0x20U;
 /** Centered trigger-level DAC value */
 static const uint8_t kDefaultTriggerOffsetByte = 0x7FU;
 
@@ -203,13 +208,13 @@ static usb::SUsbTransferResult configureDso2250Timebase(
 );
 
 /**
- * @brief Computes the centered offset DAC byte for one channel
+ * @brief Computes the centered offset DAC value for one channel
  * @param[in] channelLevels Calibration table read via the channel-level
  * control request (2 channels x 9 ranges x {start,end} 16-bit entries)
  * @param[in] channelIndex Channel index (0 = CH1, 1 = CH2)
- * @returns High byte of the calibration range midpoint for the 5V range
+ * @returns 12-bit calibration range midpoint DAC value for the 5V range
  */
-static uint8_t channelLevelCenterByte(
+static uint16_t channelLevelCenter(
     const uint8_t *channelLevels,
     uint8_t channelIndex
 );
@@ -630,8 +635,8 @@ static usb::SUsbTransferResult readCaptureData(
 }
 /*----------------------------------------------------------------------------*/
 
-/** @fn channelLevelCenterByte */
-static uint8_t channelLevelCenterByte(
+/** @fn channelLevelCenter */
+static uint16_t channelLevelCenter(
     const uint8_t *channelLevels,
     uint8_t channelIndex
 ) {
@@ -640,18 +645,18 @@ static uint8_t channelLevelCenterByte(
         2U * 2U
     );
     const uint16_t offsetStart = static_cast<uint16_t>(
-        channelLevels[base] |
-        (static_cast<uint16_t>(channelLevels[base + 1U]) << 8U)
+        (static_cast<uint16_t>(channelLevels[base]) << 8U) |
+        channelLevels[base + 1U]
     );
     const uint16_t offsetEnd = static_cast<uint16_t>(
-        channelLevels[base + 2U] |
-        (static_cast<uint16_t>(channelLevels[base + 3U]) << 8U)
+        (static_cast<uint16_t>(channelLevels[base + 2U]) << 8U) |
+        channelLevels[base + 3U]
     );
     const uint32_t center = (
         static_cast<uint32_t>(offsetStart) + static_cast<uint32_t>(offsetEnd)
     ) / 2U;
 
-    return static_cast<uint8_t>(center >> 8U);
+    return static_cast<uint16_t>(center);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -760,14 +765,15 @@ static usb::SUsbTransferResult configureCapture(
         0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U
     };
     uint8_t channelLevels[kChannelLevelTableBytes];
-    /* Offset DAC write: bytes 0/2/4 are a constant marker; 1 and 3 hold
-       the CH1/CH2 vertical-position DAC value (centered, seeded from the
-       calibration table read below); 5 holds the trigger-level DAC value
-       (centered, no calibration involved). */
+    /* Offset DAC write: each channel and the trigger use a 12-bit DAC value
+       stored as [marker | value>>8 (low nibble)] in the high byte and the
+       value low byte next. CH1/CH2 values are seeded from the per-unit
+       calibration table read below so the zero-volt level lands at
+       mid-scale; the trigger level is centered (no calibration involved). */
     uint8_t offset[17] = {
-        kOffsetDacMarkerByte, 0U,
-        kOffsetDacMarkerByte, 0U,
-        kOffsetDacMarkerByte, kDefaultTriggerOffsetByte,
+        kOffsetDacMarkerCh1, 0U,
+        kOffsetDacMarkerCh2, 0U,
+        kOffsetDacMarkerTrigger, kDefaultTriggerOffsetByte,
         0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U
     };
     usb::SUsbTransferResult result = {
@@ -826,8 +832,19 @@ static usb::SUsbTransferResult configureCapture(
         );
     }
     if (result.status == usb::EUsbTransferStatus::eSuccess) {
-        offset[1] = channelLevelCenterByte(channelLevels, 0U);
-        offset[3] = channelLevelCenterByte(channelLevels, 1U);
+        const uint16_t centerChannelOne =
+            channelLevelCenter(channelLevels, 0U);
+        const uint16_t centerChannelTwo =
+            channelLevelCenter(channelLevels, 1U);
+
+        offset[0] = static_cast<uint8_t>(
+            kOffsetDacMarkerCh1 | ((centerChannelOne >> 8U) & 0x0FU)
+        );
+        offset[1] = static_cast<uint8_t>(centerChannelOne & 0xFFU);
+        offset[2] = static_cast<uint8_t>(
+            kOffsetDacMarkerCh2 | ((centerChannelTwo >> 8U) & 0x0FU)
+        );
+        offset[3] = static_cast<uint8_t>(centerChannelTwo & 0xFFU);
         *failedOperation = EAcquisitionOperation::eSetOffsetCmd;
         result = usb::controlWrite(
             connection,
